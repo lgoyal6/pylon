@@ -1,0 +1,7 @@
+# Iteration 0 (plumbing, no SDR). Versions pinned to the dev environment.
+fastapi==0.136.1
+uvicorn[standard]==0.47.0
+
+# test-only
+httpx==0.28.1
+pytest==8.4.2
