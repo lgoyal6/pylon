@@ -1,0 +1,9 @@
+# Iteration 3 — library-contrast baseline. Runs offline against synthetic or
+# recorded IQ; no SDR dependencies.
+numpy>=2.0
+scipy>=1.13
+scikit-learn>=1.5
+matplotlib>=3.9
+
+# test-only
+pytest>=8.0
