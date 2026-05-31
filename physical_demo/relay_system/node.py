@@ -13,7 +13,6 @@ import os
 import random
 import socket
 import string
-import struct
 import subprocess
 import sys
 import threading
@@ -36,25 +35,57 @@ def _random_id(n: int = 6) -> str:
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=n))
 
 
-def _detect_default_iface_ip() -> Optional[str]:
-    """Local IP of the interface used for the default route (connected-UDP trick)."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        if ip and not ip.startswith("127."):
-            return ip
-        return None
-    except OSError:
-        return None
-    finally:
-        s.close()
-
-
 # Interfaces we never want to use for L2 mesh discovery: VPN tunnels, point-
 # to-point, container/virtual bridges that aren't carrying peers.
 _SKIP_IFACE_PREFIXES = ("lo", "utun", "tun", "tap", "ipsec", "ppp", "gif", "stf",
                         "awdl", "llw", "docker", "veth", "br-")
+
+
+def _is_apipa(ip: str) -> bool:
+    """169.254.0.0/16 — link-local, assigned when DHCP fails."""
+    return ip.startswith("169.254.")
+
+
+def _is_cgnat(ip: str) -> bool:
+    """100.64.0.0/10 — RFC 6598. Tailscale, iCloud Private Relay, Cloudflare
+    WARP, and some ISP carrier-grade NAT all use this range. Never a real LAN."""
+    if not ip.startswith("100."):
+        return False
+    try:
+        return 64 <= int(ip.split(".")[1]) <= 127
+    except (ValueError, IndexError):
+        return False
+
+
+def _is_rfc1918(ip: str) -> bool:
+    """10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 — almost certainly a real LAN."""
+    if ip.startswith("10.") or ip.startswith("192.168."):
+        return True
+    if ip.startswith("172."):
+        try:
+            return 16 <= int(ip.split(".")[1]) <= 31
+        except (ValueError, IndexError):
+            return False
+    return False
+
+
+def _classify_iface(name: str, ip: str, bcast: Optional[str]) -> Tuple[bool, str]:
+    """Decide whether this interface is usable for mesh discovery.
+
+    Returns (usable, reason). The reason string is shown at startup so a
+    user looking at the log can immediately see why an interface was skipped.
+    """
+    if name.startswith(_SKIP_IFACE_PREFIXES):
+        return False, "name excluded (VPN/virtual)"
+    if ip.startswith("127."):
+        return False, "loopback"
+    if _is_apipa(ip):
+        return False, "APIPA self-assigned (no DHCP — interface has no real network)"
+    if _is_cgnat(ip):
+        return False, "CGNAT range (Tailscale/Private Relay/WARP — virtual overlay)"
+    if not bcast:
+        return False, "point-to-point (no broadcast address)"
+    return True, "RFC1918 LAN" if _is_rfc1918(ip) else "non-private but has broadcast"
 
 
 def _list_active_ipv4_interfaces() -> List[Tuple[str, str, Optional[str]]]:
@@ -103,26 +134,37 @@ def _list_active_ipv4_interfaces() -> List[Tuple[str, str, Optional[str]]]:
     return results
 
 
-def _pick_iface_ip(interfaces: List[Tuple[str, str, Optional[str]]]) -> Optional[str]:
-    """Pick the best interface IP for multicast: prefer one with a broadcast addr."""
-    for _name, ip, bcast in interfaces:
-        if bcast:
-            return ip
-    if interfaces:
-        return interfaces[0][1]
-    return _detect_default_iface_ip()
+UsableIface = Tuple[str, str, str]  # (name, ip, bcast) — bcast guaranteed non-None
 
 
-def _open_multicast_socket(iface_ip: Optional[str]) -> Tuple[socket.socket, bool, Optional[str]]:
-    """Open the discovery socket, joined to the multicast group.
+def _select_usable_ifaces(
+    all_ifaces: List[Tuple[str, str, Optional[str]]],
+    log_prefix: str,
+) -> List[UsableIface]:
+    """Classify each enumerated interface, log every decision, return usable.
 
-    Returns (socket, multicast_ok, iface_ip_used). Pinning send/join to a
-    specific interface avoids EHOSTUNREACH on multi-homed boxes. The caller
-    is responsible for choosing `iface_ip`; pass None to use the default
-    route's interface.
+    Prefers RFC1918 LANs over non-private but-still-has-broadcast addresses,
+    so a real Wi-Fi gets picked first even when an APIPA en0 happens to
+    enumerate earlier.
     """
-    iface = iface_ip
+    rfc1918: List[UsableIface] = []
+    other: List[UsableIface] = []
+    print(f"{log_prefix} interfaces discovered:")
+    for name, ip, bcast in all_ifaces:
+        ok, reason = _classify_iface(name, ip, bcast)
+        tag = "USE " if ok else "SKIP"
+        bcast_str = bcast if bcast else "-"
+        print(f"{log_prefix}   [{tag}] {name:<10} ip={ip:<16} bcast={bcast_str:<16} ({reason})")
+        if ok and bcast is not None:
+            (rfc1918 if _is_rfc1918(ip) else other).append((name, ip, bcast))
+    return rfc1918 + other
 
+
+def _open_recv_socket(usable: List[UsableIface], log_prefix: str) -> Tuple[socket.socket, int]:
+    """Open the discovery RECEIVE socket and join multicast on every usable iface.
+
+    Returns (socket, joined_count). joined_count == 0 means we're broadcast-only.
+    """
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     if hasattr(socket, "SO_REUSEPORT"):
@@ -132,25 +174,42 @@ def _open_multicast_socket(iface_ip: Optional[str]) -> Tuple[socket.socket, bool
             pass
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
     sock.bind(("", MCAST_PORT))
-
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
-    sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
 
-    if iface:
+    joined = 0
+    targets = usable or [("any", "0.0.0.0", "")]
+    for name, ip, _b in targets:
         try:
-            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
-                            socket.inet_aton(iface))
+            mreq = socket.inet_aton(MCAST_GROUP) + socket.inet_aton(ip)
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
+            joined += 1
         except OSError as e:
-            print(f"[warn] IP_MULTICAST_IF set failed for {iface}: {e}")
+            print(f"{log_prefix} multicast join failed on {name}/{ip}: {e}")
+    return sock, joined
 
-    if_addr = socket.inet_aton(iface) if iface else struct.pack("!I", socket.INADDR_ANY)
+
+def _open_send_socket(iface_ip: str, log_prefix: str) -> Optional[socket.socket]:
+    """One send socket per interface, bound to that interface's source IP.
+
+    Binding to a specific source IP forces the kernel to send out that
+    interface, sidestepping route-table fragility on macOS where
+    IP_MULTICAST_IF alone isn't enough to avoid EHOSTUNREACH.
+    """
     try:
-        mreq = socket.inet_aton(MCAST_GROUP) + if_addr
-        sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-        return sock, True, iface
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
+        try:
+            s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
+                         socket.inet_aton(iface_ip))
+        except OSError as e:
+            print(f"{log_prefix} IP_MULTICAST_IF failed for {iface_ip}: {e}")
+        s.bind((iface_ip, 0))
+        return s
     except OSError as e:
-        print(f"[warn] multicast join failed ({e}); falling back to broadcast")
-        return sock, False, iface
+        print(f"{log_prefix} failed to open send socket on {iface_ip}: {e}")
+        return None
 
 
 class Node:
@@ -175,36 +234,48 @@ class Node:
         # confused with peer-to-peer datagrams arriving on the data port.
         self._sink_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-        # Enumerate every usable IPv4 interface (filters VPN/loopback/virtual).
-        # On a Mac doing iPhone-USB → WiFi sharing this yields, e.g.,
-        # `bridge0=192.168.2.1 (bcast 192.168.2.255)` and `en7=172.20.10.2
-        # (bcast 172.20.10.15)`; the Tailscale `utun*` (100.84.x with no
-        # broadcast) is correctly skipped.
-        ifaces = _list_active_ipv4_interfaces()
-        chosen_iface = iface or _pick_iface_ip(ifaces)
-        self._disc_sock, self._mcast_ok, self._iface = _open_multicast_socket(chosen_iface)
+        # Enumerate every IPv4 interface and classify each. Logging the
+        # decision per interface is critical for debugging weird networks
+        # (iPhone-USB → Mac WiFi sharing + Tailscale + APIPA en0 etc.).
+        log_prefix = f"[{self.node_id}]"
+        all_ifaces = _list_active_ipv4_interfaces()
+        usable = _select_usable_ifaces(all_ifaces, log_prefix)
 
-        # Discovery destinations: multicast (if reachable) plus every
-        # interface's directed broadcast. The kernel auto-routes each
-        # directed broadcast out the matching interface based on the
-        # destination subnet, so this works automatically on multi-homed
-        # boxes (iPhone tether + WiFi sharing + VPN) with no flags.
-        self._broadcast_dests: List[str] = ["255.255.255.255"]
-        if broadcast:
-            self._broadcast_dests.append(broadcast)
-        else:
-            for _name, _ip, bcast in ifaces:
-                if bcast and bcast not in self._broadcast_dests:
-                    self._broadcast_dests.append(bcast)
-            # If enumeration found nothing useful, fall back to /24 derive.
-            if len(self._broadcast_dests) == 1 and self._iface:
-                octets = self._iface.split(".")
-                if len(octets) == 4:
-                    self._broadcast_dests.append(
-                        f"{octets[0]}.{octets[1]}.{octets[2]}.255"
-                    )
-        self._warned_mcast_unreach = False
-        self._dead_dests: set = set()  # destinations we've stopped trying
+        # Honor an explicit --iface override: keep only that one, even if it
+        # would normally be filtered (escape hatch for unusual setups).
+        if iface:
+            forced = next((u for u in usable if u[1] == iface), None)
+            if forced is None:
+                # Find it in the raw list and force-include it.
+                for name, ip, bcast in all_ifaces:
+                    if ip == iface:
+                        forced = (name, ip, bcast or f"{ip.rsplit('.', 1)[0]}.255")
+                        break
+            usable = [forced] if forced else []
+
+        # One send socket per usable interface, bound to that iface's source
+        # IP. Binding to a specific source forces the kernel to send out
+        # that interface — far more reliable on macOS than IP_MULTICAST_IF
+        # alone, which the kernel still subjects to a route lookup.
+        self._send_paths: List[Tuple[str, str, str, socket.socket]] = []
+        for name, ip, bcast in usable:
+            s = _open_send_socket(ip, log_prefix)
+            if s is not None:
+                self._send_paths.append((name, ip, bcast, s))
+
+        # Optional extra broadcast destination — added to every send path
+        # (e.g. iPhone hotspot /28 directed broadcast 172.20.10.15).
+        self._extra_bcast: Optional[str] = broadcast
+
+        # Receive socket: bound to *:MCAST_PORT, joined to multicast on
+        # every usable interface so we hear group traffic from any iface.
+        self._disc_sock, joined = _open_recv_socket(usable, log_prefix)
+        self._mcast_ok = joined > 0
+        self._iface = usable[0][1] if usable else None
+
+        # Per-(path, destination) dead set: once a particular send fails
+        # with EHOSTUNREACH it stops being retried for that path.
+        self._dead: set = set()
 
         self._peers: Dict[str, PeerInfo] = {}
         self._peers_lock = threading.Lock()
@@ -219,12 +290,16 @@ class Node:
 
     def start(self) -> None:
         mode = "multicast+broadcast" if self._mcast_ok else "broadcast-only"
-        iface = self._iface or "auto"
+        paths = ", ".join(f"{n}({ip}->{b})" for n, ip, b, _s in self._send_paths) or "<none>"
         print(
             f"[{self.node_id}] up data_port={self.data_port} discovery={mode} "
-            f"group={MCAST_GROUP}:{MCAST_PORT} iface={iface} "
-            f"bcast={self._broadcast_dests}"
+            f"group={MCAST_GROUP}:{MCAST_PORT} send_paths=[{paths}]"
         )
+        if not self._send_paths:
+            print(
+                f"[{self.node_id}] WARNING: no usable interfaces — pass --iface "
+                f"<ip> with the IP of the LAN interface you want to use"
+            )
         for target in (self._hello_loop, self._discovery_loop, self._data_loop, self._reaper_loop):
             t = threading.Thread(target=target, name=target.__name__, daemon=True)
             t.start()
@@ -296,39 +371,45 @@ class Node:
         print(f"[{self.node_id}] <- {sender_id}: {message}")
 
     def _send_discovery(self, payload: bytes) -> None:
-        """Fan out the HELLO to multicast plus every directed-broadcast path.
+        """Fan out the HELLO out every usable interface.
 
-        Per-destination failures are isolated. A destination that fails with
-        EHOSTUNREACH/ENETUNREACH is marked dead and skipped from then on, so
-        a Tailscale-style point-to-point subnet doesn't spam the log forever.
+        For each send path (one socket per usable interface), try multicast
+        AND the interface's directed broadcast AND limited broadcast. Each
+        (path, destination) pair that fails with EHOSTUNREACH/ENETUNREACH
+        is blacklisted independently so a bad path doesn't poison the rest.
         """
         sent_any = False
-        last_err: Optional[Tuple[str, OSError]] = None
+        last_err: Optional[Tuple[str, str, OSError]] = None
 
-        dests: List[str] = []
-        if self._mcast_ok and MCAST_GROUP not in self._dead_dests:
-            dests.append(MCAST_GROUP)
-        for d in self._broadcast_dests:
-            if d not in self._dead_dests and d not in dests:
-                dests.append(d)
+        for name, ip, bcast, sock in self._send_paths:
+            dests = [bcast, "255.255.255.255"]
+            if self._extra_bcast and self._extra_bcast not in dests:
+                dests.append(self._extra_bcast)
+            if self._mcast_ok:
+                dests.insert(0, MCAST_GROUP)
 
-        for dst in dests:
-            try:
-                self._disc_sock.sendto(payload, (dst, MCAST_PORT))
-                sent_any = True
-            except OSError as e:
-                last_err = (dst, e)
-                if e.errno in (errno.EHOSTUNREACH, errno.ENETUNREACH):
-                    self._dead_dests.add(dst)
-                    print(
-                        f"[{self.node_id}] discovery dst {dst} unreachable ({e}); "
-                        f"skipping from now on"
-                    )
-                    if dst == MCAST_GROUP:
-                        self._mcast_ok = False
+            for dst in dests:
+                key = (name, dst)
+                if key in self._dead:
+                    continue
+                try:
+                    sock.sendto(payload, (dst, MCAST_PORT))
+                    sent_any = True
+                except OSError as e:
+                    last_err = (name, dst, e)
+                    if e.errno in (errno.EHOSTUNREACH, errno.ENETUNREACH):
+                        self._dead.add(key)
+                        print(
+                            f"[{self.node_id}] {name} -> {dst} unreachable "
+                            f"({e}); skipping this path from now on"
+                        )
+
         if not sent_any and last_err is not None:
-            dst, err = last_err
-            print(f"[{self.node_id}] all discovery sends failed; last={dst} ({err})")
+            name, dst, err = last_err
+            print(
+                f"[{self.node_id}] all discovery sends failed; "
+                f"last attempt {name}->{dst} ({err})"
+            )
 
     def _hello_loop(self) -> None:
         payload = f"HELLO|{self.node_id}|{self.data_port}".encode("utf-8")
