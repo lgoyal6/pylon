@@ -40,3 +40,42 @@ def test_clear_resets_to_default():
     state.set_detected(0.9)
     state.clear()
     assert state.snapshot() == {"detected": False, "anomaly_score": 0.0, "since": None}
+
+
+def test_set_detected_stores_event_metrics():
+    state = DetectionState()
+    state.set_detected(0.8, center_freq_hz=433_000_000, snr_db=18.5, occupied_bw_hz=120_000)
+    ev = state.event_snapshot()
+    assert ev["anomaly_score"] == 0.8
+    assert ev["center_freq_hz"] == 433_000_000
+    assert ev["snr_db"] == 18.5
+    assert ev["occupied_bw_hz"] == 120_000
+
+
+def test_event_metrics_default_to_none_when_unset():
+    state = DetectionState()
+    ev = state.event_snapshot()
+    assert ev["center_freq_hz"] is None
+    assert ev["snr_db"] is None
+    assert ev["occupied_bw_hz"] is None
+
+
+def test_clear_resets_event_metrics():
+    state = DetectionState()
+    state.set_detected(0.8, center_freq_hz=433_000_000, snr_db=18.5, occupied_bw_hz=120_000)
+    state.clear()
+    assert state.event_snapshot()["center_freq_hz"] is None
+
+
+def test_set_detected_stores_classification():
+    state = DetectionState()
+    state.set_detected(0.8, classification="jamming-like")
+    assert state.event_snapshot()["classification"] == "jamming-like"
+
+
+def test_classification_defaults_to_none_and_clears():
+    state = DetectionState()
+    assert state.event_snapshot()["classification"] is None
+    state.set_detected(0.8, classification="comms-like")
+    state.clear()
+    assert state.event_snapshot()["classification"] is None

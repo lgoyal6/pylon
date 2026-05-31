@@ -48,4 +48,4 @@ def test_sim_rising_edge_publishes_detection_event(client, multicast_listener):
     event = json.loads(data)
     assert event["anomaly_score"] == 0.66
     assert event["node_id"] == config.NODE_ID
-    assert event["band"] == "2.4GHz"
+    assert event["band"] == config.BAND
