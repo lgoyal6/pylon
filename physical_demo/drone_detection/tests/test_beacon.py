@@ -5,7 +5,7 @@ exercised with an injected fake SDR, so these run without libiio or a Pluto.
 """
 import numpy as np
 
-from beacon import PlutoBeacon, apply_duty, band_limited_noise, chirp, tone
+from beacon import PlutoBeacon, apply_duty, band_limited_noise, chirp, gfsk_hopper, tone
 
 
 class FakeSdr:
@@ -74,6 +74,23 @@ def test_apply_duty_gates_off_the_tail():
 def test_apply_duty_one_is_passthrough():
     wf = tone(128, 2_000_000, 100_000)
     assert np.array_equal(apply_duty(wf, 1.0), wf)
+
+
+def test_gfsk_hopper_is_constant_envelope():
+    # GFSK is constant-envelope (FM) — the defining feature of an RC/BT-like link.
+    x = gfsk_hopper(2 ** 14, 4_000_000, seed=0)
+    assert x.dtype == np.complex64
+    nz = np.abs(x[x != 0])
+    assert np.allclose(nz, nz[0], rtol=1e-3)
+
+
+def test_gfsk_hopper_spreads_energy_across_channels():
+    # Hopping puts energy on both sides of center, unlike a single-channel tone.
+    fs, n = 4_000_000, 2 ** 15
+    spec = np.abs(np.fft.fftshift(np.fft.fft(gfsk_hopper(n, fs, seed=0)))) ** 2
+    half = n // 2
+    assert spec[:half].sum() > 0.05 * spec.sum()
+    assert spec[half:].sum() > 0.05 * spec.sum()
 
 
 # --- PlutoBeacon TX wrapper -------------------------------------------------

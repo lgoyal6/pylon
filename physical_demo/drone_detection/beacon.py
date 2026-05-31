@@ -57,6 +57,38 @@ def chirp(n: int, sample_rate: float, bw_hz: float, amplitude: float = 0.5) -> n
     return (amplitude * np.exp(1j * phase)).astype(np.complex64)
 
 
+def gfsk_hopper(n: int, sample_rate: float, n_channels: int = 5, sps: int = None,
+               amplitude: float = 0.5, seed: int = 0) -> np.ndarray:
+    """GFSK bursts hopping across a few narrowband channels — a *feature-faithful*
+    'RC-link-like' emitter (GFSK, ~1 MHz, frequency-hopping), like a toy drone's
+    nRF24/Beken link or Bluetooth. A controllable 'unknown' for the open-world
+    demo + a training signal for the classifier. Not an exact protocol clone."""
+    rng = np.random.default_rng(seed)
+    if sps is None:
+        sps = max(2, int(sample_rate / 1_000_000))  # ~1 Msym/s
+    offsets = np.linspace(-0.3, 0.3, n_channels) * sample_rate
+    # Gaussian pulse-shaping kernel (the 'G' in GFSK), numpy-only.
+    k = np.arange(-2 * sps, 2 * sps + 1)
+    gauss = np.exp(-0.5 * (k / (0.4 * sps)) ** 2)
+    gauss /= gauss.sum()
+
+    out = np.zeros(n, dtype=np.complex64)
+    hop_len = max(sps * 4, n // 8)
+    pos = 0
+    while pos < n:
+        seg_len = min(hop_len, n - pos)
+        n_syms = seg_len // sps + 4
+        nrz = np.repeat(rng.integers(0, 2, n_syms) * 2 - 1, sps).astype(float)
+        shaped = np.convolve(nrz, gauss, mode="same")[:seg_len]
+        phase = np.cumsum(shaped) * (np.pi * 0.5 / sps)  # FM, mod index ~0.5
+        f_off = offsets[rng.integers(0, n_channels)]
+        t = np.arange(seg_len) / sample_rate
+        out[pos:pos + seg_len] = (amplitude * np.exp(1j * phase)
+                                  * np.exp(2j * np.pi * f_off * t)).astype(np.complex64)
+        pos += seg_len
+    return out
+
+
 def apply_duty(waveform: np.ndarray, duty: float) -> np.ndarray:
     """Gate a waveform on for the first `duty` fraction of the buffer and off for
     the rest — gives a sporadic/pulsed character when looped (duty=1.0 = continuous)."""
@@ -115,6 +147,8 @@ def _build_waveform(args) -> np.ndarray:
         # keep the swept span <50% of the band so the median-based occupancy
         # metric stays valid (a full-band sweep saturates the noise-floor estimate)
         wf = chirp(n, args.sample_rate, 0.4 * args.sample_rate)
+    elif args.waveform == "hopper":
+        wf = gfsk_hopper(n, args.sample_rate)  # RC/drone-like GFSK frequency-hopper
     else:
         wf = tone(n, args.sample_rate, args.offset)
     return apply_duty(wf, args.duty)
@@ -130,8 +164,8 @@ def main() -> None:
     parser.add_argument("--sample-rate", type=float, default=2_000_000, metavar="HZ")
     parser.add_argument("--tx-atten", type=float, default=-10.0, metavar="DB",
                         help="TX gain (0=max, more negative=quieter; default -10 = strong/clean). Go more negative if the RTL saturates.")
-    parser.add_argument("--waveform", choices=["tone", "noise", "barrage", "sweep"], default="tone",
-                        help="tone/noise = clean emitters; barrage/sweep = jamming-like test signals")
+    parser.add_argument("--waveform", choices=["tone", "noise", "barrage", "sweep", "hopper"], default="tone",
+                        help="tone/noise = clean emitters; barrage/sweep = jamming-like; hopper = RC/drone-like GFSK frequency-hopper")
     parser.add_argument("--offset", type=float, default=200_000, metavar="HZ",
                         help="tone offset from center (avoids the DC bin)")
     parser.add_argument("--bw", type=float, default=300_000, metavar="HZ",
