@@ -58,6 +58,25 @@ def test_build_event_classification_falls_back_to_config():
     assert build_event({"anomaly_score": 0.5})["classification"] == config.CLASSIFICATION
 
 
+def test_publisher_also_sends_event_to_relay_ingress_when_set():
+    # The mesh sensor-relay ingress is a plain unicast UDP listener; the publisher
+    # should deliver the same event JSON there in addition to multicast.
+    relay = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    relay.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    relay.bind(("127.0.0.1", 0))
+    relay.settimeout(2.0)
+    pub = MulticastPublisher(relay_addr=relay.getsockname())
+    try:
+        pub.send(build_event({"anomaly_score": 0.6, "classification": "jamming-like"}))
+        data, _ = relay.recvfrom(65535)
+    finally:
+        pub.close()
+        relay.close()
+    event = json.loads(data)
+    assert event["classification"] == "jamming-like"
+    assert event["anomaly_score"] == 0.6
+
+
 def _multicast_listener(group: str, port: int) -> socket.socket:
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)

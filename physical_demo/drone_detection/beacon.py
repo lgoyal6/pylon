@@ -112,7 +112,9 @@ def _build_waveform(args) -> np.ndarray:
     elif args.waveform == "barrage":
         wf = band_limited_noise(n, args.sample_rate, 0.4 * args.sample_rate)
     elif args.waveform == "sweep":
-        wf = chirp(n, args.sample_rate, 0.8 * args.sample_rate)
+        # keep the swept span <50% of the band so the median-based occupancy
+        # metric stays valid (a full-band sweep saturates the noise-floor estimate)
+        wf = chirp(n, args.sample_rate, 0.4 * args.sample_rate)
     else:
         wf = tone(n, args.sample_rate, args.offset)
     return apply_duty(wf, args.duty)
@@ -126,8 +128,8 @@ def main() -> None:
     parser.add_argument("--freq", type=float, default=433_920_000, metavar="HZ",
                         help="center frequency (default 433.92 MHz ISM; must be in the RTL's <=1.75 GHz range)")
     parser.add_argument("--sample-rate", type=float, default=2_000_000, metavar="HZ")
-    parser.add_argument("--tx-atten", type=float, default=-30.0, metavar="DB",
-                        help="TX gain (0=max, more negative=quieter). Lower it if the RTL saturates.")
+    parser.add_argument("--tx-atten", type=float, default=-10.0, metavar="DB",
+                        help="TX gain (0=max, more negative=quieter; default -10 = strong/clean). Go more negative if the RTL saturates.")
     parser.add_argument("--waveform", choices=["tone", "noise", "barrage", "sweep"], default="tone",
                         help="tone/noise = clean emitters; barrage/sweep = jamming-like test signals")
     parser.add_argument("--offset", type=float, default=200_000, metavar="HZ",

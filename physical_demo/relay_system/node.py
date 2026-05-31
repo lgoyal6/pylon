@@ -281,35 +281,31 @@ class Node:
         parts = rest.split("|", 2)
         if len(parts) < 2:
             return
-        peer_id, port_str = parts[0], parts[1]
+        peer_id = parts[0]
+        # parts[1] is the advertised port — kept in the protocol for clarity
+        # but ignored: through a NAT (e.g. WSL2 behind Windows, iPhone tether,
+        # corporate firewall) the internal port isn't reachable from outside,
+        # so we always use `addr` (the kernel-visible source), which IS the
+        # address NAT will route replies back through.
         peer_list_str = parts[2] if len(parts) >= 3 else ""
-        try:
-            port = int(port_str)
-        except ValueError:
-            return
         if peer_id != self.node_id:
-            self._add_peer(peer_id, addr[0], port)
-        # Gossip: every peer the sender knows is now also known to us.
+            self._add_peer(peer_id, addr[0], addr[1])
         for pid, ip, pport in self._parse_peer_list(peer_list_str):
             self._add_peer(pid, ip, pport)
 
     def _handle_join(self, rest: str, addr: Tuple[str, int]) -> None:
         parts = rest.split("|", 1)
-        if len(parts) < 2:
+        if len(parts) < 1:
             return
-        peer_id, port_str = parts[0], parts[1]
-        try:
-            port = int(port_str)
-        except ValueError:
+        peer_id = parts[0]
+        if not peer_id or peer_id == self.node_id:
             return
-        if peer_id == self.node_id:
-            return
-        # Add the joiner using the data port THEY advertised, not addr[1]
-        # (the source port of this UDP packet may be different).
-        self._add_peer(peer_id, addr[0], port)
+        # Use the kernel-visible source as the peer's reachable address — see
+        # _handle_hello for why we ignore the advertised port.
+        self._add_peer(peer_id, addr[0], addr[1])
         # Immediate HELLO back so the joiner gets our peer list within ms,
         # not after waiting up to HELLO_INTERVAL.
-        self._send_hello((addr[0], port))
+        self._send_hello(addr)
 
     def _handle_msg(self, rest: str, addr: Tuple[str, int]) -> None:
         parts = rest.split("|", 2)
@@ -358,6 +354,22 @@ class Node:
         print(f"[{self.node_id}] <- {sender_id}: {message}")
 
 
+def _stdin_loop(node: Node) -> None:
+    """Read lines from stdin and broadcast each non-empty line to the mesh.
+
+    Runs as a daemon thread so EOF / process exit cleans it up automatically.
+    """
+    try:
+        for line in sys.stdin:
+            msg = line.rstrip("\r\n")
+            if not msg:
+                continue
+            sent = node.broadcast(msg)
+            print(f"[{node.node_id}] -> sent {msg!r} to {sent} peer(s)")
+    except (OSError, ValueError):
+        return
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="P2P mesh node — bootstrap by known peer, no multicast."
@@ -399,6 +411,13 @@ def main(argv: Optional[List[str]] = None) -> int:
         verbose=args.verbose,
     )
     node.start()
+
+    # Type a line, hit enter -> broadcast it to the mesh.
+    stdin_t = threading.Thread(
+        target=_stdin_loop, args=(node,), name="stdin", daemon=True
+    )
+    stdin_t.start()
+    print(f"[{node.node_id}] type a message and hit enter to broadcast it")
 
     last_broadcast = 0.0
     try:

@@ -19,7 +19,7 @@ import time
 
 import config
 from anomaly import AnomalyDetector
-from capture import RtlCapture
+from capture import PlutoCapture, RtlCapture
 from detector import EnergyThresholdDetector, classify_emitter
 
 
@@ -28,7 +28,10 @@ def main() -> None:
         prog="receiver",
         description="RTL-SDR live detection display. Pairs with beacon.py.",
     )
-    parser.add_argument("--freq", type=float, default=433_920_000, metavar="HZ")
+    parser.add_argument("--sdr", choices=["rtl", "pluto"], default="rtl",
+                        help="rtl = NESDR/RTL (<=1.75 GHz); pluto = ADALM-Pluto (2.4 GHz)")
+    parser.add_argument("--freq", type=float, default=None, metavar="HZ",
+                        help="center frequency; default 2.437 GHz for --sdr pluto, else 433.92 MHz")
     parser.add_argument("--sample-rate", type=float, default=config.SAMPLE_RATE_HZ, metavar="HZ")
     parser.add_argument("--gain", default=config.GAIN, help="tuner gain in dB, or 'auto'")
     parser.add_argument("--detector", choices=["anomaly", "energy"], default="anomaly")
@@ -36,16 +39,26 @@ def main() -> None:
                         help="anomaly: ambient-learning duration (keep the beacon OFF)")
     args = parser.parse_args()
 
+    if args.freq is not None:
+        freq = int(args.freq)
+    elif args.sdr == "pluto":
+        freq = config.PLUTO_DEFAULT_CENTER_FREQ_HZ
+    else:
+        freq = 433_920_000
+
     fs = int(args.sample_rate)
     window = config.WINDOW_SAMPLES
-    cap = RtlCapture(center_freq_hz=int(args.freq), sample_rate=fs, gain=args.gain)
+    if args.sdr == "pluto":
+        cap = PlutoCapture(center_freq_hz=freq, sample_rate=fs, gain=args.gain)
+    else:
+        cap = RtlCapture(center_freq_hz=freq, sample_rate=fs, gain=args.gain)
     if args.detector == "energy":
         detector = EnergyThresholdDetector(sample_rate=fs)
     else:
         learn_windows = max(1, int(args.learn_seconds * fs / window))
         detector = AnomalyDetector(sample_rate=fs, learn_windows=learn_windows)
 
-    print(f"Receiver: {args.detector} detector @ {args.freq/1e6:.3f} MHz, gain={args.gain}")
+    print(f"Receiver [{args.sdr}]: {args.detector} detector @ {freq/1e6:.3f} MHz, gain={args.gain}")
     if args.detector == "anomaly":
         print(f"Learning ambient ~{args.learn_seconds:.0f}s — keep the beacon OFF. Then start beacon.py.")
 

@@ -40,8 +40,11 @@ def build_event(snapshot: dict) -> dict:
 
 
 class MulticastPublisher:
-    def __init__(self, group: str = None, port: int = None, ttl: int = None) -> None:
+    def __init__(self, group: str = None, port: int = None, ttl: int = None,
+                 relay_addr=None) -> None:
         self.addr = (group or config.MCAST_GROUP, port or config.MCAST_PORT)
+        # (host, port) of a mesh sensor-relay ingress to also unicast events to.
+        self.relay_addr = relay_addr if relay_addr is not None else config.RELAY_ADDR
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
         self.sock.setsockopt(
             socket.IPPROTO_IP,
@@ -51,7 +54,10 @@ class MulticastPublisher:
         self.sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
 
     def send(self, event: dict) -> None:
-        self.sock.sendto(json.dumps(event).encode("utf-8"), self.addr)
+        payload = json.dumps(event).encode("utf-8")
+        self.sock.sendto(payload, self.addr)
+        if self.relay_addr is not None:  # bridge into the mesh via the sensor relay
+            self.sock.sendto(payload, self.relay_addr)
 
     def close(self) -> None:
         self.sock.close()
