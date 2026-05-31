@@ -3,6 +3,7 @@ import type { Relay, Connection } from './mesh'
 import {
   placeRelays,
   formConnections,
+  destroyRelay,
   healMesh,
   distanceKm,
 } from './mesh'
@@ -32,7 +33,6 @@ import {
   INTERCEPT_RADIUS_KM,
   PACKET_DURATION_MS,
   PACKET_TRAIL_MS,
-  FOB_LINK_RANGE_KM,
   GROUND_SLOPE_FACTOR,
   NODE_PAD_HALF_DEG,
   FOB_REACTION_MS,
@@ -98,7 +98,28 @@ export interface FlyTarget {
   longitude: number
   latitude: number
   zoom: number
+  pitch?: number
+  bearing?: number
+  duration?: number
   nonce: number
+}
+
+// Guided-intro tour: a scripted sequence (camera + procedural events + popups)
+// that plays once on first load to explain the system to a new viewer. After
+// 'done' the sandbox is fully interactive in the normal way.
+export type TourStep =
+  | 'intro'        // popup: situation briefing, camera in on FOB
+  | 'deploy'       // procedurally placing relays one at a time
+  | 'meshed'       // popup: relays self-organized into a mesh
+  | 'incoming'     // drone spawned far out, approaching the perimeter
+  | 'detected'     // popup: drone has entered detection range
+  | 'routing'      // signal hops through mesh, FOB launches interceptor
+  | 'neutralized'  // popup: drone neutralized
+  | 'done'         // tour finished — normal sandbox mode
+
+export interface TourState {
+  active: boolean
+  step: TourStep
 }
 
 export interface LogEntry {
@@ -140,6 +161,7 @@ export interface SandboxState {
   rfLatest: Record<string, RFSample>
   rfSeries: Record<string, number[]>  // per-node rssi ring buffer
   rfAggregate: number[]               // mean rssi across online nodes over time
+  tour: TourState
   _relaySeq: number
   _fobSeq: number
   _droneSeq: number
@@ -245,10 +267,13 @@ function routeToFob(
     ...fobNodes,
     { id: SINK, position: [0, 0] as [number, number], range: 999, status: 'online' as const, connections: [], elevation: 0 },
   ]
+  // A relay can hand the packet to a FOB only if the FOB is within that relay's
+  // own range. If the detecting node can't reach the FOB directly, BFS routes the
+  // packet hop-by-hop through neighboring relays until one is in range of a FOB.
   const fobLinks: Connection[] = []
   onlineRelays.forEach(r =>
     fobs.forEach(f => {
-      if (distanceKm(r.position, f.position) < FOB_LINK_RANGE_KM) {
+      if (distanceKm(r.position, f.position) <= r.range) {
         fobLinks.push({ id: `${r.id}-${f.id}`, from: r.id, to: f.id, status: 'active', latency: 5 })
       }
     })
@@ -303,8 +328,16 @@ export interface SandboxStore extends SandboxState {
   setPlacementMode: (m: PlacementMode) => void
   setHostileType: (t: HostileType) => void
   setSelectedId: (id: string | null) => void
-  flyToLocation: (longitude: number, latitude: number, zoom: number) => void
+  flyToLocation: (
+    longitude: number,
+    latitude: number,
+    zoom: number,
+    opts?: { pitch?: number; bearing?: number; duration?: number }
+  ) => void
   refreshElevations: () => void
+  startTour: () => void
+  setTourStep: (step: TourStep) => void
+  skipTour: () => void
   ingestRf: (sample: RFSample) => void
   connectRfSource: (url: string) => void
   disconnectRfSource: () => void
@@ -324,7 +357,8 @@ const initialState: SandboxState = {
   flyTarget: null,
   log: [],
   meshHealth: EMPTY_HEALTH,
-  playing: true,
+  // Sim is paused on first paint — the tour resumes it during action steps.
+  playing: false,
   speed: 1,
   swarmSize: SWARM_DEFAULT_SIZE,
   placementMode: 'relay',
@@ -337,6 +371,7 @@ const initialState: SandboxState = {
   rfLatest: {},
   rfSeries: {},
   rfAggregate: [],
+  tour: { active: true, step: 'intro' },
   _relaySeq: 0,
   _fobSeq: 1,
   _droneSeq: 0,
@@ -373,8 +408,37 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
   setHostileType: (t: HostileType) => set({ hostileType: t }),
   setSelectedId: (id: string | null) => set({ selectedId: id }),
 
-  flyToLocation: (longitude: number, latitude: number, zoom: number) =>
-    set({ flyTarget: { longitude, latitude, zoom, nonce: Date.now() } }),
+  flyToLocation: (
+    longitude: number,
+    latitude: number,
+    zoom: number,
+    opts?: { pitch?: number; bearing?: number; duration?: number }
+  ) =>
+    set({
+      flyTarget: {
+        longitude,
+        latitude,
+        zoom,
+        pitch: opts?.pitch,
+        bearing: opts?.bearing,
+        duration: opts?.duration,
+        nonce: Date.now(),
+      },
+    }),
+
+  startTour: () =>
+    set({
+      ...initialState,
+      fobs: [...DEFAULT_FOBS],
+      tour: { active: true, step: 'intro' },
+      playing: false,
+    }),
+
+  setTourStep: (step: TourStep) =>
+    set(state => ({ tour: { ...state.tour, step } })),
+
+  skipTour: () =>
+    set({ tour: { active: false, step: 'done' }, playing: true }),
 
   // Re-sample terrain elevation for all nodes (called once terrain tiles load).
   refreshElevations: () => {
@@ -428,7 +492,22 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
     })
   },
 
-  reset: () => set({ ...initialState, fobs: [...DEFAULT_FOBS], drones: [], interceptors: [], rfLatest: {}, rfSeries: {}, rfAggregate: [], log: [], animationTime: 0 }),
+  // Reset returns to a clean sandbox in normal (interactive) mode — the tour
+  // doesn't replay on reset, only on first load. Use startTour() explicitly to
+  // re-run the guided intro.
+  reset: () => set({
+    ...initialState,
+    fobs: [...DEFAULT_FOBS],
+    drones: [],
+    interceptors: [],
+    rfLatest: {},
+    rfSeries: {},
+    rfAggregate: [],
+    log: [],
+    animationTime: 0,
+    playing: true,
+    tour: { active: false, step: 'done' },
+  }),
 
   deployRing: () => {
     const state = get()
@@ -543,27 +622,16 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
   destroyRelayById: (id: string) => {
     const state = get()
     const target = state.relays.find(r => r.id === id)
-    if (!target) return
-    // Remove the relay entirely — no leftover marker — clear it from neighbor
-    // connection lists, drop its links, then self-heal the surviving mesh.
-    const relays = state.relays.filter(r => r.id !== id)
-    relays.forEach(r => { r.connections = r.connections.filter(c => c !== id) })
-    const survivingConns = state.connections.filter(c => c.from !== id && c.to !== id)
-    const healed = healMesh(relays, survivingConns)
+    if (!target || target.status === 'destroyed') return
+    const { relays, connections } = destroyRelay(id, state.relays, state.connections)
+    const healed = healMesh(relays, connections)
     const rerouted = healed.filter(c => c.status === 'rerouted').length
-
-    const rfLatest = { ...state.rfLatest }; delete rfLatest[id]
-    const rfSeries = { ...state.rfSeries }; delete rfSeries[id]
-
     set({
       relays,
       connections: healed,
       meshHealth: computeHealth(relays, healed),
-      selectedId: state.selectedId === id ? null : state.selectedId,
-      rfLatest,
-      rfSeries,
       log: pushLog(
-        pushLog(state.log, `${id} REMOVED — mesh degraded`, 'kill'),
+        pushLog(state.log, `${id} DESTROYED — mesh degraded`, 'kill'),
         rerouted ? `MESH self-healing — ${rerouted} paths rerouted` : 'MESH stable — no reroute needed',
         'warn'
       ),

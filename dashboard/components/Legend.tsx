@@ -44,14 +44,14 @@ export default function Legend() {
           <span style={{ ...labelStyle, display: 'block', margin: '8px 0 4px' }}>Mesh</span>
           <Row color="rgb(58,90,74)" label="Active link" />
           <Row color="rgb(90,74,106)" label="Rerouted link" />
-          <Row color="rgb(90,150,110)" label="Signal traffic" ring />
-          <Row color="rgb(230,232,236)" label="Threat alert (white)" ring />
+          <Row color="rgb(150,138,78)" label="FOB link" />
+          <Row color="rgb(230,232,236)" label="Threat packet (white)" ring />
 
           <span style={{ ...labelStyle, display: 'block', margin: '8px 0 4px' }}>Threat</span>
-          <Row color="rgb(122,106,58)" label="Hostile — air (UAV)" />
-          <Row color="rgb(90,160,200)" label="Hostile — water" />
-          <Row color="rgb(176,160,80)" label="Hostile — ground" />
-          <Row color="rgb(122,58,58)" label="Interceptor" />
+          <Row color="rgb(235,80,70)" label="Hostile — air (UAV)" />
+          <Row color="rgb(225,95,125)" label="Hostile — water" />
+          <Row color="rgb(205,65,55)" label="Hostile — ground" />
+          <Row color="rgb(235,130,90)" label="Interceptor" />
         </div>
       )}
     </div>
