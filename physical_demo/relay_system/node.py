@@ -8,6 +8,7 @@ server. Standard library only.
 from __future__ import annotations
 
 import argparse
+import errno
 import os
 import random
 import socket
@@ -34,12 +35,35 @@ def _random_id(n: int = 6) -> str:
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=n))
 
 
-def _open_multicast_socket() -> Tuple[socket.socket, bool]:
+def _detect_default_iface_ip() -> Optional[str]:
+    """Return the local IP of the interface used for the default route.
+
+    Uses the connected-UDP-socket trick — no packets are actually sent. Returns
+    None if detection fails (e.g. no network).
+    """
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        if ip and not ip.startswith("127."):
+            return ip
+        return None
+    except OSError:
+        return None
+    finally:
+        s.close()
+
+
+def _open_multicast_socket(iface_ip: Optional[str] = None) -> Tuple[socket.socket, bool, Optional[str]]:
     """Open the discovery socket, joined to the multicast group.
 
-    Returns (socket, multicast_ok). Falls back to plain broadcast on the same
-    port if joining the multicast group fails (e.g. multicast blocked).
+    Returns (socket, multicast_ok, iface_ip_used). Pinning the send/join to a
+    specific interface avoids EHOSTUNREACH on multi-homed boxes (hotspot,
+    internet sharing, VPN). Falls back to plain broadcast on the same port if
+    joining the group fails entirely.
     """
+    iface = iface_ip or _detect_default_iface_ip()
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     if hasattr(socket, "SO_REUSEPORT"):
@@ -53,13 +77,21 @@ def _open_multicast_socket() -> Tuple[socket.socket, bool]:
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
     sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
 
+    if iface:
+        try:
+            sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
+                            socket.inet_aton(iface))
+        except OSError as e:
+            print(f"[warn] IP_MULTICAST_IF set failed for {iface}: {e}")
+
+    if_addr = socket.inet_aton(iface) if iface else struct.pack("!I", socket.INADDR_ANY)
     try:
-        mreq = struct.pack("4sl", socket.inet_aton(MCAST_GROUP), socket.INADDR_ANY)
+        mreq = socket.inet_aton(MCAST_GROUP) + if_addr
         sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-        return sock, True
+        return sock, True, iface
     except OSError as e:
         print(f"[warn] multicast join failed ({e}); falling back to broadcast")
-        return sock, False
+        return sock, False, iface
 
 
 class Node:
@@ -68,6 +100,8 @@ class Node:
         node_id: Optional[str] = None,
         on_message: Optional[Callable[[str, str], None]] = None,
         sink: Optional[Tuple[str, int]] = None,
+        iface: Optional[str] = None,
+        broadcast: Optional[str] = None,
     ) -> None:
         self.node_id = node_id or _random_id()
         self.on_message: Callable[[str, str], None] = on_message or self._default_on_message
@@ -82,7 +116,24 @@ class Node:
         # confused with peer-to-peer datagrams arriving on the data port.
         self._sink_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-        self._disc_sock, self._mcast_ok = _open_multicast_socket()
+        self._disc_sock, self._mcast_ok, self._iface = _open_multicast_socket(iface)
+
+        # Discovery destinations: multicast (if reachable) plus broadcast paths.
+        # On macOS, multicast often fails with EHOSTUNREACH and limited
+        # broadcast (255.255.255.255) is unreliable, so we always include the
+        # directed subnet broadcast derived from the interface IP. Override
+        # via `broadcast=` for non-/24 networks (e.g. iPhone hotspot is /28
+        # with broadcast 172.20.10.15).
+        self._broadcast_dests: list[str] = ["255.255.255.255"]
+        if broadcast:
+            self._broadcast_dests.append(broadcast)
+        elif self._iface:
+            octets = self._iface.split(".")
+            if len(octets) == 4:
+                self._broadcast_dests.append(
+                    f"{octets[0]}.{octets[1]}.{octets[2]}.255"
+                )
+        self._warned_mcast_unreach = False
 
         self._peers: Dict[str, PeerInfo] = {}
         self._peers_lock = threading.Lock()
@@ -96,10 +147,12 @@ class Node:
     # ---- public API ----------------------------------------------------
 
     def start(self) -> None:
-        mode = "multicast" if self._mcast_ok else "broadcast-fallback"
+        mode = "multicast+broadcast" if self._mcast_ok else "broadcast-only"
+        iface = self._iface or "auto"
         print(
-            f"[{self.node_id}] up on data_port={self.data_port} "
-            f"discovery={mode} group={MCAST_GROUP}:{MCAST_PORT}"
+            f"[{self.node_id}] up data_port={self.data_port} discovery={mode} "
+            f"group={MCAST_GROUP}:{MCAST_PORT} iface={iface} "
+            f"bcast={self._broadcast_dests}"
         )
         for target in (self._hello_loop, self._discovery_loop, self._data_loop, self._reaper_loop):
             t = threading.Thread(target=target, name=target.__name__, daemon=True)
@@ -172,13 +225,43 @@ class Node:
         print(f"[{self.node_id}] <- {sender_id}: {message}")
 
     def _send_discovery(self, payload: bytes) -> None:
-        try:
-            if self._mcast_ok:
-                self._disc_sock.sendto(payload, (MCAST_GROUP, MCAST_PORT))
-            else:
-                self._disc_sock.sendto(payload, ("255.255.255.255", MCAST_PORT))
-        except OSError as e:
-            print(f"[{self.node_id}] hello send failed: {e}")
+        """Fan out the HELLO to multicast plus every broadcast destination.
+
+        macOS frequently rejects multicast sends with EHOSTUNREACH (no route
+        for 239.x on the chosen iface) and also rejects 255.255.255.255 on
+        some hotspot/sharing networks. Sending the same datagram to several
+        destinations is cheap (a few extra UDP packets per second) and means
+        whichever path the network actually permits will reach peers.
+        """
+        sent_any = False
+        last_err: Optional[Tuple[str, OSError]] = None
+        dests: list[str] = []
+        if self._mcast_ok:
+            dests.append(MCAST_GROUP)
+        dests.extend(self._broadcast_dests)
+        # de-dup while preserving order
+        seen: set = set()
+        dests = [d for d in dests if not (d in seen or seen.add(d))]
+
+        for dst in dests:
+            try:
+                self._disc_sock.sendto(payload, (dst, MCAST_PORT))
+                sent_any = True
+            except OSError as e:
+                last_err = (dst, e)
+                if (
+                    dst == MCAST_GROUP
+                    and e.errno in (errno.EHOSTUNREACH, errno.ENETUNREACH)
+                    and not self._warned_mcast_unreach
+                ):
+                    self._warned_mcast_unreach = True
+                    print(
+                        f"[{self.node_id}] multicast send unreachable ({e}); "
+                        f"continuing on broadcast paths {self._broadcast_dests}"
+                    )
+        if not sent_any and last_err is not None:
+            dst, err = last_err
+            print(f"[{self.node_id}] all discovery sends failed; last={dst} ({err})")
 
     def _hello_loop(self) -> None:
         payload = f"HELLO|{self.node_id}|{self.data_port}".encode("utf-8")
@@ -265,6 +348,16 @@ class Node:
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="P2P mesh node demo")
     parser.add_argument("--id", dest="node_id", default=None, help="optional node ID")
+    parser.add_argument("--iface", default=None,
+                        help="local IP of the interface to use for multicast "
+                             "send/join (e.g. 192.168.1.42). Auto-detected by "
+                             "default; set explicitly to override on a "
+                             "multi-homed host (VPN, hotspot, Internet Sharing)")
+    parser.add_argument("--broadcast", default=None,
+                        help="explicit directed broadcast address to use for "
+                             "discovery (e.g. 172.20.10.15 for iPhone hotspot "
+                             "/28). Auto-derives a /24 broadcast from --iface "
+                             "if omitted.")
     parser.add_argument("--sink-host", default="127.0.0.1",
                         help="local UDP host to forward received messages to")
     parser.add_argument("--sink-port", type=int, default=None,
@@ -273,7 +366,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     sink = (args.sink_host, args.sink_port) if args.sink_port is not None else None
-    node = Node(node_id=args.node_id, sink=sink)
+    node = Node(node_id=args.node_id, sink=sink, iface=args.iface,
+                broadcast=args.broadcast)
     node.start()
     if sink:
         print(f"[{node.node_id}] sink egress -> udp://{sink[0]}:{sink[1]}")

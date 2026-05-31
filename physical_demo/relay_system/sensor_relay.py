@@ -56,6 +56,12 @@ def run_sensor_listener(node: Node, bind_host: str, bind_port: int, stop: thread
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Sensor->mesh relay node")
     parser.add_argument("--id", dest="node_id", default=None)
+    parser.add_argument("--iface", default=None,
+                        help="local IP of the interface to use for multicast "
+                             "send/join (auto-detected by default)")
+    parser.add_argument("--broadcast", default=None,
+                        help="explicit directed broadcast address for discovery "
+                             "(e.g. 172.20.10.15 for iPhone hotspot)")
     parser.add_argument("--sensor-host", default=SENSOR_BIND_DEFAULT,
                         help="local bind address for sensor ingress (default 127.0.0.1)")
     parser.add_argument("--sensor-port", type=int, default=SENSOR_PORT_DEFAULT)
@@ -67,7 +73,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     sink = (args.sink_host, args.sink_port) if args.sink_port is not None else None
-    node = Node(node_id=args.node_id, sink=sink)
+    node = Node(node_id=args.node_id, sink=sink, iface=args.iface,
+                broadcast=args.broadcast)
     node.start()
     if sink:
         print(f"[{node.node_id}] sink egress -> udp://{sink[0]}:{sink[1]}")
