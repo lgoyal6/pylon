@@ -1,19 +1,39 @@
-"""Peer-to-peer mesh node.
+"""Peer-to-peer mesh node with bootstrap-by-known-peer discovery.
 
-Multiple instances on the same machine or on the same LAN auto-discover each
-other over UDP multicast and exchange direct unicast messages — no central
-server. Standard library only.
+No multicast, no broadcast, no interface enumeration. Each node binds one
+UDP port. New nodes are told the address of any existing peer ("the
+bootstrap") and JOIN it; from then on, gossip in every HELLO propagates the
+full peer list across the mesh within a couple of seconds.
+
+Demo on one Wi-Fi:
+
+    Terminal 1 (any laptop):
+        python3 node.py --port 5000
+        [node-A] listening on 192.168.1.5:5000
+        [node-A] to add more nodes: python3 node.py --bootstrap 192.168.1.5:5000
+
+    Terminal 2..N (any other laptop on the same Wi-Fi):
+        python3 node.py --bootstrap 192.168.1.5:5000
+
+Bootstraps may be specified more than once; the first one that answers wins,
+so you can hand out a list of "known good" peers and survive any single
+listener going down. Once a node has any peer, gossip takes over.
+
+Wire format (UTF-8 text, '|' separators):
+
+    JOIN|<id>|<port>                      one-shot, sent until we have a peer
+    HELLO|<id>|<port>|<peer_list>         periodic keepalive, includes gossip
+    MSG|<uuid>|<origin_id>|<text>         application message (multi-hop)
+
+<peer_list> is "<id>@<ip>:<port>" entries joined by ';' (empty when alone).
 """
 
 from __future__ import annotations
 
 import argparse
-import errno
-import os
 import random
 import socket
 import string
-import subprocess
 import sys
 import threading
 import time
@@ -21,204 +41,36 @@ import uuid
 from collections import OrderedDict
 from typing import Callable, Dict, List, Optional, Tuple
 
-MCAST_GROUP = "239.1.1.1"
-MCAST_PORT = 5000
 HELLO_INTERVAL = 1.0
 PEER_TIMEOUT = 5.0
-RECV_BUF = 4096
-SEEN_MAX = 4096  # cap on remembered message IDs (LRU eviction)
+RECV_BUF = 8192
+SEEN_MAX = 4096
 
-PeerInfo = Tuple[str, int, float]  # (ip, data_port, last_seen)
+PeerInfo = Tuple[str, int, float]  # (ip, port, last_seen)
 
 
 def _random_id(n: int = 6) -> str:
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=n))
 
 
-# Interfaces we never want to use for L2 mesh discovery: VPN tunnels, point-
-# to-point, container/virtual bridges that aren't carrying peers.
-_SKIP_IFACE_PREFIXES = ("lo", "utun", "tun", "tap", "ipsec", "ppp", "gif", "stf",
-                        "awdl", "llw", "docker", "veth", "br-")
-
-
-def _is_apipa(ip: str) -> bool:
-    """169.254.0.0/16 — link-local, assigned when DHCP fails."""
-    return ip.startswith("169.254.")
-
-
-def _is_cgnat(ip: str) -> bool:
-    """100.64.0.0/10 — RFC 6598. Tailscale, iCloud Private Relay, Cloudflare
-    WARP, and some ISP carrier-grade NAT all use this range. Never a real LAN."""
-    if not ip.startswith("100."):
-        return False
+def _detect_local_ip() -> str:
+    """Best-effort LAN IP guess (connected-UDP trick — no packets sent)."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
-        return 64 <= int(ip.split(".")[1]) <= 127
-    except (ValueError, IndexError):
-        return False
+        s.connect(("8.8.8.8", 80))
+        return s.getsockname()[0]
+    except OSError:
+        return "127.0.0.1"
+    finally:
+        s.close()
 
 
-def _is_rfc1918(ip: str) -> bool:
-    """10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16 — almost certainly a real LAN."""
-    if ip.startswith("10.") or ip.startswith("192.168."):
-        return True
-    if ip.startswith("172."):
-        try:
-            return 16 <= int(ip.split(".")[1]) <= 31
-        except (ValueError, IndexError):
-            return False
-    return False
-
-
-def _classify_iface(name: str, ip: str, bcast: Optional[str]) -> Tuple[bool, str]:
-    """Decide whether this interface is usable for mesh discovery.
-
-    Returns (usable, reason). The reason string is shown at startup so a
-    user looking at the log can immediately see why an interface was skipped.
-
-    Note on CGNAT (100.64.0.0/10): this range is used by both VPNs
-    (Tailscale, iCloud Private Relay, Cloudflare WARP — all on utun* names)
-    AND by large public networks (schools, dorms, hotels, mobile carriers
-    DHCPing clients into a CGNAT subnet). We trust the name-prefix filter
-    above to catch the VPN cases, and accept CGNAT on a real NIC (en*,
-    eth*, bridge*) as a usable LAN.
-    """
-    if name.startswith(_SKIP_IFACE_PREFIXES):
-        return False, "name excluded (VPN/virtual)"
-    if ip.startswith("127."):
-        return False, "loopback"
-    if _is_apipa(ip):
-        return False, "APIPA self-assigned (no DHCP — interface has no real network)"
-    if not bcast:
-        return False, "point-to-point (no broadcast address)"
-    if _is_rfc1918(ip):
-        return True, "RFC1918 LAN"
-    if _is_cgnat(ip):
-        return True, "CGNAT LAN (school/hotel/carrier DHCP)"
-    return True, "public-routable IP with broadcast"
-
-
-def _list_active_ipv4_interfaces() -> List[Tuple[str, str, Optional[str]]]:
-    """Return [(name, ip, broadcast_or_None), ...] for usable IPv4 interfaces.
-
-    Parses `ifconfig` (present on both macOS and typical Linux). Skips
-    loopback and known-virtual interfaces. Interfaces without a broadcast
-    address (point-to-point links like Tailscale's utun) are still returned
-    but with bcast=None so callers can filter them out.
-    """
-    try:
-        output = subprocess.check_output(
-            ["ifconfig"], stderr=subprocess.DEVNULL, timeout=2
-        ).decode("utf-8", "replace")
-    except (OSError, subprocess.SubprocessError):
-        return []
-
-    results: List[Tuple[str, str, Optional[str]]] = []
-    current_name: Optional[str] = None
-    for line in output.splitlines():
-        if line and not line[0].isspace():
-            # interface header: "en0: flags=..." (mac) / "en0  Link encap:..." (linux)
-            current_name = line.split(":")[0].split()[0].strip()
-            continue
-        if not current_name:
-            continue
-        if current_name.startswith(_SKIP_IFACE_PREFIXES):
-            continue
-        stripped = line.strip()
-        if not stripped.startswith("inet "):
-            continue
-        parts = stripped.split()
-        try:
-            ip = parts[1]
-        except IndexError:
-            continue
-        if ip.startswith("127."):
-            continue
-        bcast: Optional[str] = None
-        if "broadcast" in parts:
-            try:
-                bcast = parts[parts.index("broadcast") + 1]
-            except IndexError:
-                pass
-        results.append((current_name, ip, bcast))
-    return results
-
-
-UsableIface = Tuple[str, str, str]  # (name, ip, bcast) — bcast guaranteed non-None
-
-
-def _select_usable_ifaces(
-    all_ifaces: List[Tuple[str, str, Optional[str]]],
-    log_prefix: str,
-) -> List[UsableIface]:
-    """Classify each enumerated interface, log every decision, return usable.
-
-    Prefers RFC1918 LANs over non-private but-still-has-broadcast addresses,
-    so a real Wi-Fi gets picked first even when an APIPA en0 happens to
-    enumerate earlier.
-    """
-    rfc1918: List[UsableIface] = []
-    other: List[UsableIface] = []
-    print(f"{log_prefix} interfaces discovered:")
-    for name, ip, bcast in all_ifaces:
-        ok, reason = _classify_iface(name, ip, bcast)
-        tag = "USE " if ok else "SKIP"
-        bcast_str = bcast if bcast else "-"
-        print(f"{log_prefix}   [{tag}] {name:<10} ip={ip:<16} bcast={bcast_str:<16} ({reason})")
-        if ok and bcast is not None:
-            (rfc1918 if _is_rfc1918(ip) else other).append((name, ip, bcast))
-    return rfc1918 + other
-
-
-def _open_recv_socket(usable: List[UsableIface], log_prefix: str) -> Tuple[socket.socket, int]:
-    """Open the discovery RECEIVE socket and join multicast on every usable iface.
-
-    Returns (socket, joined_count). joined_count == 0 means we're broadcast-only.
-    """
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    if hasattr(socket, "SO_REUSEPORT"):
-        try:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        except OSError:
-            pass
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-    sock.bind(("", MCAST_PORT))
-    sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
-
-    joined = 0
-    targets = usable or [("any", "0.0.0.0", "")]
-    for name, ip, _b in targets:
-        try:
-            mreq = socket.inet_aton(MCAST_GROUP) + socket.inet_aton(ip)
-            sock.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, mreq)
-            joined += 1
-        except OSError as e:
-            print(f"{log_prefix} multicast join failed on {name}/{ip}: {e}")
-    return sock, joined
-
-
-def _open_send_socket(iface_ip: str, log_prefix: str) -> Optional[socket.socket]:
-    """One send socket per interface, bound to that interface's source IP.
-
-    Binding to a specific source IP forces the kernel to send out that
-    interface, sidestepping route-table fragility on macOS where
-    IP_MULTICAST_IF alone isn't enough to avoid EHOSTUNREACH.
-    """
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)
-        s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 2)
-        try:
-            s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF,
-                         socket.inet_aton(iface_ip))
-        except OSError as e:
-            print(f"{log_prefix} IP_MULTICAST_IF failed for {iface_ip}: {e}")
-        s.bind((iface_ip, 0))
-        return s
-    except OSError as e:
-        print(f"{log_prefix} failed to open send socket on {iface_ip}: {e}")
-        return None
+def _parse_addr(spec: str) -> Tuple[str, int]:
+    """'host:port' -> (host, int(port)). 'host' may be a name or dotted IP."""
+    host, _, port_str = spec.rpartition(":")
+    if not host or not port_str:
+        raise ValueError(f"expected 'host:port', got {spec!r}")
+    return host, int(port_str)
 
 
 class Node:
@@ -227,64 +79,28 @@ class Node:
         node_id: Optional[str] = None,
         on_message: Optional[Callable[[str, str], None]] = None,
         sink: Optional[Tuple[str, int]] = None,
-        iface: Optional[str] = None,
-        broadcast: Optional[str] = None,
+        port: int = 0,
+        bootstrap: Optional[List[Tuple[str, int]]] = None,
+        advertise_ip: Optional[str] = None,
+        verbose: bool = False,
     ) -> None:
         self.node_id = node_id or _random_id()
         self.on_message: Callable[[str, str], None] = on_message or self._default_on_message
         self._sink: Optional[Tuple[str, int]] = sink
+        self._verbose = verbose
 
-        # Data socket: ephemeral port for direct unicast messages.
-        self._data_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self._data_sock.bind(("", 0))
-        self.data_port: int = self._data_sock.getsockname()[1]
+        # One UDP socket for everything: JOIN, HELLO, MSG.
+        self._sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self._sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._sock.bind(("", port))
+        self.data_port: int = self._sock.getsockname()[1]
 
-        # Separate egress socket for local sink, so sink traffic never gets
-        # confused with peer-to-peer datagrams arriving on the data port.
+        # Separate egress socket for the local sink so its packets never get
+        # mixed up with mesh traffic on the data port.
         self._sink_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-        # Enumerate every IPv4 interface and classify each. Logging the
-        # decision per interface is critical for debugging weird networks
-        # (iPhone-USB → Mac WiFi sharing + Tailscale + APIPA en0 etc.).
-        log_prefix = f"[{self.node_id}]"
-        all_ifaces = _list_active_ipv4_interfaces()
-        usable = _select_usable_ifaces(all_ifaces, log_prefix)
-
-        # Honor an explicit --iface override: keep only that one, even if it
-        # would normally be filtered (escape hatch for unusual setups).
-        if iface:
-            forced = next((u for u in usable if u[1] == iface), None)
-            if forced is None:
-                # Find it in the raw list and force-include it.
-                for name, ip, bcast in all_ifaces:
-                    if ip == iface:
-                        forced = (name, ip, bcast or f"{ip.rsplit('.', 1)[0]}.255")
-                        break
-            usable = [forced] if forced else []
-
-        # One send socket per usable interface, bound to that iface's source
-        # IP. Binding to a specific source forces the kernel to send out
-        # that interface — far more reliable on macOS than IP_MULTICAST_IF
-        # alone, which the kernel still subjects to a route lookup.
-        self._send_paths: List[Tuple[str, str, str, socket.socket]] = []
-        for name, ip, bcast in usable:
-            s = _open_send_socket(ip, log_prefix)
-            if s is not None:
-                self._send_paths.append((name, ip, bcast, s))
-
-        # Optional extra broadcast destination — added to every send path
-        # (e.g. iPhone hotspot /28 directed broadcast 172.20.10.15).
-        self._extra_bcast: Optional[str] = broadcast
-
-        # Receive socket: bound to *:MCAST_PORT, joined to multicast on
-        # every usable interface so we hear group traffic from any iface.
-        self._disc_sock, joined = _open_recv_socket(usable, log_prefix)
-        self._mcast_ok = joined > 0
-        self._iface = usable[0][1] if usable else None
-
-        # Per-(path, destination) dead set: once a particular send fails
-        # with EHOSTUNREACH it stops being retried for that path.
-        self._dead: set = set()
+        self.advertise_ip = advertise_ip or _detect_local_ip()
+        self._bootstrap_list: List[Tuple[str, int]] = list(bootstrap or [])
 
         self._peers: Dict[str, PeerInfo] = {}
         self._peers_lock = threading.Lock()
@@ -293,23 +109,22 @@ class Node:
         self._seen_lock = threading.Lock()
 
         self._stop = threading.Event()
-        self._threads: list[threading.Thread] = []
+        self._threads: List[threading.Thread] = []
 
     # ---- public API ----------------------------------------------------
 
     def start(self) -> None:
-        mode = "multicast+broadcast" if self._mcast_ok else "broadcast-only"
-        paths = ", ".join(f"{n}({ip}->{b})" for n, ip, b, _s in self._send_paths) or "<none>"
-        print(
-            f"[{self.node_id}] up data_port={self.data_port} discovery={mode} "
-            f"group={MCAST_GROUP}:{MCAST_PORT} send_paths=[{paths}]"
-        )
-        if not self._send_paths:
+        addr = f"{self.advertise_ip}:{self.data_port}"
+        print(f"[{self.node_id}] listening on {addr}")
+        if self._bootstrap_list:
+            targets = ", ".join(f"{h}:{p}" for h, p in self._bootstrap_list)
+            print(f"[{self.node_id}] bootstrapping from {targets}")
+        else:
             print(
-                f"[{self.node_id}] WARNING: no usable interfaces — pass --iface "
-                f"<ip> with the IP of the LAN interface you want to use"
+                f"[{self.node_id}] to add more nodes: "
+                f"python3 node.py --bootstrap {addr}"
             )
-        for target in (self._hello_loop, self._discovery_loop, self._data_loop, self._reaper_loop):
+        for target in (self._hello_loop, self._recv_loop, self._reaper_loop):
             t = threading.Thread(target=target, name=target.__name__, daemon=True)
             t.start()
             self._threads.append(t)
@@ -322,27 +137,16 @@ class Node:
             return dict(self._peers)
 
     def broadcast(self, message: str) -> int:
-        """Originate a new message: tag with a fresh UUID and fan it out.
-
-        Returns the number of peers the message was sent to.
-        """
+        """Originate a new message — fan out to every connected peer."""
         msg_id = uuid.uuid4().hex
-        # Mark our own UUID seen so any echo back to us is dropped silently.
         self._mark_seen(msg_id)
         self._to_sink(self.node_id, message)
         return self._send_msg(msg_id, self.node_id, message)
 
     def set_sink(self, sink: Optional[Tuple[str, int]]) -> None:
-        """Enable or disable local UDP sink forwarding."""
         self._sink = sink
 
-    def _to_sink(self, origin_id: str, message: str) -> None:
-        if self._sink is None:
-            return
-        try:
-            self._sink_sock.sendto(f"{origin_id}|{message}".encode("utf-8"), self._sink)
-        except OSError as e:
-            print(f"[{self.node_id}] sink forward failed: {e}")
+    # ---- send helpers --------------------------------------------------
 
     def _send_msg(
         self,
@@ -353,18 +157,50 @@ class Node:
     ) -> int:
         payload = f"MSG|{msg_id}|{origin_id}|{message}".encode("utf-8")
         sent = 0
-        for _peer_id, (ip, port, _seen) in self.peers().items():
+        for _pid, (ip, port, _seen) in self.peers().items():
             if exclude_addr is not None and (ip, port) == exclude_addr:
                 continue
             try:
-                self._data_sock.sendto(payload, (ip, port))
+                self._sock.sendto(payload, (ip, port))
                 sent += 1
             except OSError as e:
                 print(f"[{self.node_id}] send to {ip}:{port} failed: {e}")
         return sent
 
+    def _send_hello(self, addr: Tuple[str, int]) -> None:
+        peer_list = self._format_peer_list()
+        payload = f"HELLO|{self.node_id}|{self.data_port}|{peer_list}".encode("utf-8")
+        try:
+            self._sock.sendto(payload, addr)
+            if self._verbose:
+                print(
+                    f"[{self.node_id}] tx HELLO -> {addr[0]}:{addr[1]} "
+                    f"({len(payload)}B, peerlist_n={len(self.peers())})"
+                )
+        except OSError as e:
+            if self._verbose:
+                print(f"[{self.node_id}] tx HELLO to {addr} failed: {e}")
+
+    def _send_join(self, addr: Tuple[str, int]) -> None:
+        payload = f"JOIN|{self.node_id}|{self.data_port}".encode("utf-8")
+        try:
+            self._sock.sendto(payload, addr)
+            if self._verbose:
+                print(f"[{self.node_id}] tx JOIN -> {addr[0]}:{addr[1]}")
+        except OSError as e:
+            print(f"[{self.node_id}] JOIN to {addr[0]}:{addr[1]} failed: {e}")
+
+    def _to_sink(self, origin_id: str, message: str) -> None:
+        if self._sink is None:
+            return
+        try:
+            self._sink_sock.sendto(
+                f"{origin_id}|{message}".encode("utf-8"), self._sink
+            )
+        except OSError as e:
+            print(f"[{self.node_id}] sink forward failed: {e}")
+
     def _mark_seen(self, msg_id: str) -> bool:
-        """Record `msg_id`. Returns True if new, False if already seen."""
         with self._seen_lock:
             if msg_id in self._seen:
                 self._seen.move_to_end(msg_id)
@@ -374,119 +210,136 @@ class Node:
                 self._seen.popitem(last=False)
             return True
 
-    # ---- internals -----------------------------------------------------
+    def _format_peer_list(self) -> str:
+        return ";".join(
+            f"{pid}@{ip}:{port}" for pid, (ip, port, _seen) in self.peers().items()
+        )
 
-    def _default_on_message(self, sender_id: str, message: str) -> None:
-        print(f"[{self.node_id}] <- {sender_id}: {message}")
+    def _parse_peer_list(self, s: str) -> List[Tuple[str, str, int]]:
+        out: List[Tuple[str, str, int]] = []
+        if not s:
+            return out
+        for entry in s.split(";"):
+            if not entry:
+                continue
+            try:
+                pid, ipport = entry.split("@", 1)
+                ip, port_str = ipport.rsplit(":", 1)
+                out.append((pid, ip, int(port_str)))
+            except (ValueError, IndexError):
+                continue
+        return out
 
-    def _send_discovery(self, payload: bytes) -> None:
-        """Fan out the HELLO out every usable interface.
-
-        For each send path (one socket per usable interface), try multicast
-        AND the interface's directed broadcast AND limited broadcast. Each
-        (path, destination) pair that fails with EHOSTUNREACH/ENETUNREACH
-        is blacklisted independently so a bad path doesn't poison the rest.
-        """
-        sent_any = False
-        last_err: Optional[Tuple[str, str, OSError]] = None
-
-        for name, ip, bcast, sock in self._send_paths:
-            dests = [bcast, "255.255.255.255"]
-            if self._extra_bcast and self._extra_bcast not in dests:
-                dests.append(self._extra_bcast)
-            if self._mcast_ok:
-                dests.insert(0, MCAST_GROUP)
-
-            for dst in dests:
-                key = (name, dst)
-                if key in self._dead:
-                    continue
-                try:
-                    sock.sendto(payload, (dst, MCAST_PORT))
-                    sent_any = True
-                except OSError as e:
-                    last_err = (name, dst, e)
-                    if e.errno in (errno.EHOSTUNREACH, errno.ENETUNREACH):
-                        self._dead.add(key)
-                        print(
-                            f"[{self.node_id}] {name} -> {dst} unreachable "
-                            f"({e}); skipping this path from now on"
-                        )
-
-        if not sent_any and last_err is not None:
-            name, dst, err = last_err
-            print(
-                f"[{self.node_id}] all discovery sends failed; "
-                f"last attempt {name}->{dst} ({err})"
-            )
+    # ---- main loops ----------------------------------------------------
 
     def _hello_loop(self) -> None:
-        payload = f"HELLO|{self.node_id}|{self.data_port}".encode("utf-8")
+        """Every HELLO_INTERVAL: keepalive every peer, or retry bootstraps."""
         while not self._stop.is_set():
-            self._send_discovery(payload)
+            current = self.peers()
+            if current:
+                for _pid, (ip, port, _seen) in current.items():
+                    self._send_hello((ip, port))
+            elif self._bootstrap_list:
+                # We don't have any peers yet — keep knocking on every
+                # bootstrap target until one responds (or one comes online).
+                for addr in self._bootstrap_list:
+                    self._send_join(addr)
             self._stop.wait(HELLO_INTERVAL)
 
-    def _discovery_loop(self) -> None:
-        self._disc_sock.settimeout(1.0)
+    def _recv_loop(self) -> None:
+        self._sock.settimeout(1.0)
         while not self._stop.is_set():
             try:
-                data, addr = self._disc_sock.recvfrom(RECV_BUF)
+                data, addr = self._sock.recvfrom(RECV_BUF)
             except socket.timeout:
                 continue
             except OSError:
                 if self._stop.is_set():
                     return
                 continue
-            try:
-                parts = data.decode("utf-8").split("|", 2)
-            except UnicodeDecodeError:
-                continue
-            if len(parts) < 3 or parts[0] != "HELLO":
-                continue
-            peer_id, port_str = parts[1], parts[2]
-            if peer_id == self.node_id:
-                continue
-            try:
-                port = int(port_str)
-            except ValueError:
-                continue
-            now = time.time()
-            with self._peers_lock:
-                existed = peer_id in self._peers
-                self._peers[peer_id] = (addr[0], port, now)
-            if not existed:
-                print(f"[{self.node_id}] + peer joined: {peer_id} @ {addr[0]}:{port}")
 
-    def _data_loop(self) -> None:
-        self._data_sock.settimeout(1.0)
-        while not self._stop.is_set():
+            if self._verbose:
+                preview = data[:96].decode("utf-8", errors="replace").replace("\n", " ")
+                print(
+                    f"[{self.node_id}] rx {len(data)}B from "
+                    f"{addr[0]}:{addr[1]}: {preview!r}"
+                )
+
             try:
-                data, addr = self._data_sock.recvfrom(RECV_BUF)
-            except socket.timeout:
-                continue
-            except OSError:
-                if self._stop.is_set():
-                    return
-                continue
-            try:
-                parts = data.decode("utf-8").split("|", 3)
+                text = data.decode("utf-8")
             except UnicodeDecodeError:
                 continue
-            if len(parts) < 4 or parts[0] != "MSG":
-                continue
-            msg_id, origin_id, message = parts[1], parts[2], parts[3]
-            if origin_id == self.node_id:
-                continue  # our own message echoed back
-            if not self._mark_seen(msg_id):
-                continue  # duplicate — drop without re-forwarding
-            self._to_sink(origin_id, message)
-            try:
-                self.on_message(origin_id, message)
-            except Exception as e:  # callback shouldn't kill the listener
-                print(f"[{self.node_id}] on_message error: {e}")
-            # Re-forward to the rest of the mesh (gossip flooding); skip
-            # the peer we got it from since it already has it.
-            self._send_msg(msg_id, origin_id, message, exclude_addr=addr)
+            kind, _sep, rest = text.partition("|")
+            if kind == "MSG":
+                self._handle_msg(rest, addr)
+            elif kind == "HELLO":
+                self._handle_hello(rest, addr)
+            elif kind == "JOIN":
+                self._handle_join(rest, addr)
+
+    def _handle_hello(self, rest: str, addr: Tuple[str, int]) -> None:
+        parts = rest.split("|", 2)
+        if len(parts) < 2:
+            return
+        peer_id, port_str = parts[0], parts[1]
+        peer_list_str = parts[2] if len(parts) >= 3 else ""
+        try:
+            port = int(port_str)
+        except ValueError:
+            return
+        if peer_id != self.node_id:
+            self._add_peer(peer_id, addr[0], port)
+        # Gossip: every peer the sender knows is now also known to us.
+        for pid, ip, pport in self._parse_peer_list(peer_list_str):
+            self._add_peer(pid, ip, pport)
+
+    def _handle_join(self, rest: str, addr: Tuple[str, int]) -> None:
+        parts = rest.split("|", 1)
+        if len(parts) < 2:
+            return
+        peer_id, port_str = parts[0], parts[1]
+        try:
+            port = int(port_str)
+        except ValueError:
+            return
+        if peer_id == self.node_id:
+            return
+        # Add the joiner using the data port THEY advertised, not addr[1]
+        # (the source port of this UDP packet may be different).
+        self._add_peer(peer_id, addr[0], port)
+        # Immediate HELLO back so the joiner gets our peer list within ms,
+        # not after waiting up to HELLO_INTERVAL.
+        self._send_hello((addr[0], port))
+
+    def _handle_msg(self, rest: str, addr: Tuple[str, int]) -> None:
+        parts = rest.split("|", 2)
+        if len(parts) < 3:
+            return
+        msg_id, origin_id, message = parts[0], parts[1], parts[2]
+        if origin_id == self.node_id:
+            return
+        if not self._mark_seen(msg_id):
+            return  # duplicate — drop, do not re-forward
+        self._to_sink(origin_id, message)
+        try:
+            self.on_message(origin_id, message)
+        except Exception as e:
+            print(f"[{self.node_id}] on_message error: {e}")
+        # Re-forward to all other peers for multi-hop propagation.
+        self._send_msg(msg_id, origin_id, message, exclude_addr=addr)
+
+    def _add_peer(self, peer_id: str, ip: str, port: int) -> None:
+        if peer_id == self.node_id:
+            return
+        now = time.time()
+        with self._peers_lock:
+            existed = peer_id in self._peers
+            self._peers[peer_id] = (ip, port, now)
+        if not existed:
+            print(f"[{self.node_id}] + peer joined: {peer_id} @ {ip}:{port}")
+            # Knock back so they learn about us right away (and add us as a
+            # peer if they don't already have us via gossip).
+            self._send_hello((ip, port))
 
     def _reaper_loop(self) -> None:
         while not self._stop.is_set():
@@ -501,33 +354,51 @@ class Node:
             for pid, ip, port in dropped:
                 print(f"[{self.node_id}] - peer dropped: {pid} @ {ip}:{port}")
 
+    def _default_on_message(self, sender_id: str, message: str) -> None:
+        print(f"[{self.node_id}] <- {sender_id}: {message}")
 
-def main(argv: Optional[list[str]] = None) -> int:
-    parser = argparse.ArgumentParser(description="P2P mesh node demo")
-    parser.add_argument("--id", dest="node_id", default=None, help="optional node ID")
-    parser.add_argument("--iface", default=None,
-                        help="local IP of the interface to use for multicast "
-                             "send/join (e.g. 192.168.1.42). Auto-detected by "
-                             "default; set explicitly to override on a "
-                             "multi-homed host (VPN, hotspot, Internet Sharing)")
-    parser.add_argument("--broadcast", default=None,
-                        help="explicit directed broadcast address to use for "
-                             "discovery (e.g. 172.20.10.15 for iPhone hotspot "
-                             "/28). Auto-derives a /24 broadcast from --iface "
-                             "if omitted.")
+
+def main(argv: Optional[List[str]] = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="P2P mesh node — bootstrap by known peer, no multicast."
+    )
+    parser.add_argument("--id", dest="node_id", default=None,
+                        help="optional short ID (auto-generated if omitted)")
+    parser.add_argument("--port", type=int, default=0,
+                        help="UDP port to bind (default: ephemeral). Pin a "
+                             "fixed port like 5000 on the first node so the "
+                             "rest can bootstrap to a predictable address.")
+    parser.add_argument("--bootstrap", action="append", default=[],
+                        metavar="HOST:PORT",
+                        help="address of an existing peer to join through. "
+                             "May be given more than once — first to answer "
+                             "wins, so a list survives any single node going down.")
+    parser.add_argument("--advertise-ip", default=None,
+                        help="LAN IP to advertise to peers (default: auto-detect)")
     parser.add_argument("--sink-host", default="127.0.0.1",
                         help="local UDP host to forward received messages to")
     parser.add_argument("--sink-port", type=int, default=None,
                         help="if set, forward each distinct mesh message to "
                              "udp://<sink-host>:<sink-port> as '<origin_id>|<message>'")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="log every send and receive")
     args = parser.parse_args(argv)
 
+    try:
+        bootstrap = [_parse_addr(b) for b in args.bootstrap]
+    except ValueError as e:
+        parser.error(str(e))
+
     sink = (args.sink_host, args.sink_port) if args.sink_port is not None else None
-    node = Node(node_id=args.node_id, sink=sink, iface=args.iface,
-                broadcast=args.broadcast)
+    node = Node(
+        node_id=args.node_id,
+        port=args.port,
+        bootstrap=bootstrap,
+        advertise_ip=args.advertise_ip,
+        sink=sink,
+        verbose=args.verbose,
+    )
     node.start()
-    if sink:
-        print(f"[{node.node_id}] sink egress -> udp://{sink[0]}:{sink[1]}")
 
     last_broadcast = 0.0
     try:

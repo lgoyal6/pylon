@@ -18,7 +18,7 @@ import sys
 import threading
 import time
 
-from node import Node
+from node import Node, _parse_addr
 
 SENSOR_PORT_DEFAULT = 5000
 SENSOR_BIND_DEFAULT = "127.0.0.1"
@@ -56,12 +56,13 @@ def run_sensor_listener(node: Node, bind_host: str, bind_port: int, stop: thread
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Sensor->mesh relay node")
     parser.add_argument("--id", dest="node_id", default=None)
-    parser.add_argument("--iface", default=None,
-                        help="local IP of the interface to use for multicast "
-                             "send/join (auto-detected by default)")
-    parser.add_argument("--broadcast", default=None,
-                        help="explicit directed broadcast address for discovery "
-                             "(e.g. 172.20.10.15 for iPhone hotspot)")
+    parser.add_argument("--port", type=int, default=0,
+                        help="UDP port for the mesh socket (default: ephemeral)")
+    parser.add_argument("--bootstrap", action="append", default=[],
+                        metavar="HOST:PORT",
+                        help="address of an existing peer to join through (repeatable)")
+    parser.add_argument("--advertise-ip", default=None,
+                        help="LAN IP to advertise to peers (default: auto-detect)")
     parser.add_argument("--sensor-host", default=SENSOR_BIND_DEFAULT,
                         help="local bind address for sensor ingress (default 127.0.0.1)")
     parser.add_argument("--sensor-port", type=int, default=SENSOR_PORT_DEFAULT)
@@ -70,11 +71,24 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--sink-port", type=int, default=None,
                         help="if set, forward each distinct mesh message to "
                              "udp://<sink-host>:<sink-port> as '<origin_id>|<message>'")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="log every send and receive")
     args = parser.parse_args(argv)
 
+    try:
+        bootstrap = [_parse_addr(b) for b in args.bootstrap]
+    except ValueError as e:
+        parser.error(str(e))
+
     sink = (args.sink_host, args.sink_port) if args.sink_port is not None else None
-    node = Node(node_id=args.node_id, sink=sink, iface=args.iface,
-                broadcast=args.broadcast)
+    node = Node(
+        node_id=args.node_id,
+        port=args.port,
+        bootstrap=bootstrap,
+        advertise_ip=args.advertise_ip,
+        sink=sink,
+        verbose=args.verbose,
+    )
     node.start()
     if sink:
         print(f"[{node.node_id}] sink egress -> udp://{sink[0]}:{sink[1]}")
