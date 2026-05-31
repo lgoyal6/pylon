@@ -48,6 +48,7 @@ baseline_kind = "zscore"  # anomaly baseline: "zscore" or "quantile" (robust for
 learn_seconds = config.LEARN_SECONDS
 load_model_path = None
 save_model_path = None
+classify_model_path = None  # case 3: trained RF classifier (--detector classifier)
 
 # Case 2: Bluetooth-scanner source (detects the car's HC-05 via blueutil), set by main.py.
 bt_scan = False
@@ -186,21 +187,28 @@ def _start_capture_thread():
         from capture import RtlCapture
 
         capture = RtlCapture(center_freq_hz=center_freq_hz, sample_rate=sample_rate_hz, gain=gain)
-    if detector_kind == "energy":
-        from detector import EnergyThresholdDetector
-        detector = EnergyThresholdDetector(sample_rate=sample_rate_hz)
+    if detector_kind == "classifier":
+        from classifier import ClassifierSource, RFClassifier
+
+        clf = RFClassifier.load(classify_model_path)
+        print(f"[classifier] loaded model from {classify_model_path}; classifying -> mesh")
+        runner = ClassifierSource(capture, clf, bus, sample_rate=sample_rate_hz, center_freq_hz=center_freq_hz)
     else:
-        from anomaly import AnomalyDetector
-        learn_windows = max(1, int(learn_seconds * sample_rate_hz / config.WINDOW_SAMPLES))
-        detector = AnomalyDetector(sample_rate=sample_rate_hz, learn_windows=learn_windows, baseline=baseline_kind)
-        if load_model_path:
-            detector.load(load_model_path)
-            print(f"[anomaly] loaded baseline from {load_model_path}; watching")
-        elif save_model_path:
-            detector._save_path = save_model_path  # _fit() persists when learning completes
-        if not load_model_path:
-            print(f"[anomaly] learning ambient for ~{learn_seconds:.0f}s ({learn_windows} windows); keep the target OFF")
-    runner = DetectorRunner(capture, detector, state, bus, center_freq_hz=center_freq_hz, log_edges=True)
+        if detector_kind == "energy":
+            from detector import EnergyThresholdDetector
+            detector = EnergyThresholdDetector(sample_rate=sample_rate_hz)
+        else:
+            from anomaly import AnomalyDetector
+            learn_windows = max(1, int(learn_seconds * sample_rate_hz / config.WINDOW_SAMPLES))
+            detector = AnomalyDetector(sample_rate=sample_rate_hz, learn_windows=learn_windows, baseline=baseline_kind)
+            if load_model_path:
+                detector.load(load_model_path)
+                print(f"[anomaly] loaded baseline from {load_model_path}; watching")
+            elif save_model_path:
+                detector._save_path = save_model_path  # _fit() persists when learning completes
+            if not load_model_path:
+                print(f"[anomaly] learning ambient for ~{learn_seconds:.0f}s ({learn_windows} windows); keep the target OFF")
+        runner = DetectorRunner(capture, detector, state, bus, center_freq_hz=center_freq_hz, log_edges=True)
     stop_event = threading.Event()
     thread = threading.Thread(target=runner.run, args=(stop_event,), daemon=True)
     thread.start()

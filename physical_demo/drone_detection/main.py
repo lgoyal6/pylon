@@ -60,9 +60,14 @@ def main() -> None:
     )
     parser.add_argument(
         "--detector",
-        choices=["anomaly", "energy"],
+        choices=["anomaly", "energy", "classifier"],
         default="anomaly",
-        help="anomaly = open-world novelty (Iteration 2, product); energy = occupied-bw threshold (Iteration 1)",
+        help="anomaly = open-world novelty; energy = occupied-bw threshold; classifier = trained RF model (case 3)",
+    )
+    parser.add_argument(
+        "--classify-model",
+        metavar="PATH",
+        help="case 3: trained RF model (train.py) for --detector classifier",
     )
     parser.add_argument(
         "--baseline",
@@ -114,6 +119,7 @@ def main() -> None:
     service.sample_rate_hz = int(args.sample_rate)
     service.gain = args.gain
     service.detector_kind = args.detector
+    service.classify_model_path = args.classify_model
     service.baseline_kind = args.baseline
     service.learn_seconds = args.learn_seconds
     service.bt_scan = args.bt_scan
