@@ -32,7 +32,7 @@ def build_event(snapshot: dict) -> dict:
         "anomaly_score": snapshot["anomaly_score"],
         "threshold": config.THRESHOLD,
         "classification": _metric(snapshot, "classification", config.CLASSIFICATION),
-        "label": config.LABEL,
+        "label": _metric(snapshot, "label", config.LABEL),
         "confidence": config.CONFIDENCE,
         "snr_db": _metric(snapshot, "snr_db", config.SNR_DB),
         "occupied_bw_hz": _metric(snapshot, "occupied_bw_hz", config.OCCUPIED_BW_HZ),

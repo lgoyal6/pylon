@@ -49,6 +49,10 @@ learn_seconds = config.LEARN_SECONDS
 load_model_path = None
 save_model_path = None
 
+# Case 2: Bluetooth-scanner source (detects the car's HC-05 via blueutil), set by main.py.
+bt_scan = False
+bt_target = "HC-05"  # name/address substring to match; "" = any BT device
+
 
 class DetectorRunner:
     """Capture -> detect -> DetectionState loop. `capture` is injected so the
@@ -203,6 +207,19 @@ def _start_capture_thread():
     return stop_event, thread
 
 
+def _start_bt_scanner_thread():
+    """Case 2: run a BtScannerSource (Bluetooth inquiry) in a daemon thread; it
+    pushes detection events to the bus like any other source."""
+    from bt_scanner import BtScannerSource
+
+    scanner = BtScannerSource(bus, target=bt_target)
+    stop_event = threading.Event()
+    thread = threading.Thread(target=scanner.run, args=(stop_event,), daemon=True)
+    thread.start()
+    print(f"[bt-scanner] scanning for Bluetooth target='{bt_target or 'ANY'}' -> mesh")
+    return stop_event, thread
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     tasks = [asyncio.create_task(_heartbeat())]
@@ -221,15 +238,23 @@ async def lifespan(app: FastAPI):
         except Exception as exc:  # hardware/driver failure -> degrade to sim
             print(f"[capture] live source unavailable, falling back to /sim: {exc}")
 
+    bt_handle = None
+    if bt_scan:
+        try:
+            bt_handle = _start_bt_scanner_thread()
+        except Exception as exc:
+            print(f"[bt-scanner] unavailable: {exc}")
+
     try:
         yield
     finally:
         for task in tasks:
             task.cancel()
-        if capture_handle is not None:
-            stop_event, thread = capture_handle
-            stop_event.set()
-            thread.join(timeout=2.0)
+        for handle in (capture_handle, bt_handle):
+            if handle is not None:
+                stop_event, thread = handle
+                stop_event.set()
+                thread.join(timeout=2.0)
         sink_stop.set()
         sink_thread.join(timeout=2.0)
         publisher.close()

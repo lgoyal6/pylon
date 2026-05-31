@@ -54,6 +54,16 @@ def test_build_event_uses_classification_from_snapshot():
     assert event["classification"] == "jamming-like"
 
 
+def test_build_event_uses_label_from_snapshot():
+    # A BT-scanner detection carries the device name/address in `label`.
+    event = build_event({"anomaly_score": 1.0, "label": "HC-05"})
+    assert event["label"] == "HC-05"
+
+
+def test_build_event_label_falls_back_to_config():
+    assert build_event({"anomaly_score": 0.5})["label"] == config.LABEL
+
+
 def test_build_event_classification_falls_back_to_config():
     assert build_event({"anomaly_score": 0.5})["classification"] == config.CLASSIFICATION
 

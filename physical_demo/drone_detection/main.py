@@ -80,6 +80,17 @@ def main() -> None:
     parser.add_argument("--load-model", metavar="PATH", help="anomaly: load a saved baseline, skip learning")
     parser.add_argument("--save-model", metavar="PATH", help="anomaly: save the baseline after learning")
     parser.add_argument(
+        "--bt-scan",
+        action="store_true",
+        help="case 2: run a Bluetooth-scanner source (detects the car's HC-05 via blueutil) -> mesh",
+    )
+    parser.add_argument(
+        "--bt-target",
+        default="HC-05",
+        metavar="NAME|ADDR",
+        help="BT name/address substring to match (default HC-05; empty string = any BT device)",
+    )
+    parser.add_argument(
         "--relay",
         metavar="HOST:PORT",
         default=None,
@@ -105,6 +116,8 @@ def main() -> None:
     service.detector_kind = args.detector
     service.baseline_kind = args.baseline
     service.learn_seconds = args.learn_seconds
+    service.bt_scan = args.bt_scan
+    service.bt_target = args.bt_target
     service.load_model_path = args.load_model
     service.save_model_path = args.save_model
     if args.relay:
