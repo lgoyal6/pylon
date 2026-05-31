@@ -1,3 +1,12 @@
-[2026-05-31T02:35:21.692Z] [info] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
-[2026-05-31T02:35:21.905Z] [error] deck: Failed to create WebGL context: Could not create a WebGL context, VENDOR = 0xffff, DEVICE = 0xffff, GL_VENDOR = Google Inc. (Google), GL_RENDERER = ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver-5.0.0), GL_VERSION = 5.0.0, Sandboxed = yes, Optimus = no, AMD switchable = no, Reset notification strategy = 0x8252, ErrorMessage = BindToCurrentSequence failed: . undefined
-[2026-05-31T02:35:21.905Z] [error] deck: Failed to create WebGL context: Could not create a WebGL context, VENDOR = 0xffff, DEVICE = 0xffff, GL_VENDOR = Google Inc. (Google), GL_RENDERER = ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (LLVM 10.0.0) (0x0000C0DE)), SwiftShader driver-5.0.0), GL_VERSION = 5.0.0, Sandboxed = yes, Optimus = no, AMD switchable = no, Reset notification strategy = 0x8252, ErrorMessage = BindToCurrentSequence failed: . undefined
+[2026-05-31T06:11:11.102Z] [info] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold
+[2026-05-31T06:11:11.501Z] [error] Error: Failed to initialize WebGL
+    at Map._setupPainter (webpack-internal:///(app-pages-browser)/./node_modules/mapbox-gl/dist/mapbox-gl.js:18:920237)
+    at new Map (webpack-internal:///(app-pages-browser)/./node_modules/mapbox-gl/dist/mapbox-gl.js:18:895499)
+    at Mapbox._initialize (webpack-internal:///(app-pages-browser)/./node_modules/@vis.gl/react-mapbox/dist/mapbox/mapbox.js:250:21)
+    at new Mapbox (webpack-internal:///(app-pages-browser)/./node_modules/@vis.gl/react-mapbox/dist/mapbox/mapbox.js:155:14)
+    at eval (webpack-internal:///(app-pages-browser)/./node_modules/@vis.gl/react-mapbox/dist/components/map.js:46:26)
+[2026-05-31T06:11:11.501Z] [error] Error: Failed to initialize WebGL.
+    at new Map (webpack-internal:///(app-pages-browser)/./node_modules/mapbox-gl/dist/mapbox-gl.js:18:895543)
+    at Mapbox._initialize (webpack-internal:///(app-pages-browser)/./node_modules/@vis.gl/react-mapbox/dist/mapbox/mapbox.js:250:21)
+    at new Mapbox (webpack-internal:///(app-pages-browser)/./node_modules/@vis.gl/react-mapbox/dist/mapbox/mapbox.js:155:14)
+    at eval (webpack-internal:///(app-pages-browser)/./node_modules/@vis.gl/react-mapbox/dist/components/map.js:46:26)
