@@ -9,6 +9,8 @@ import BottomDock from '../components/BottomDock'
 import Legend from '../components/Legend'
 import SelectionPanel from '../components/SelectionPanel'
 import SearchBox from '../components/SearchBox'
+import TourOverlay from '../components/TourOverlay'
+import TourController from '../components/TourController'
 
 const MapView = dynamic(() => import('../components/Map'), { ssr: false })
 
@@ -40,6 +42,8 @@ export default function Home() {
           <Legend />
           <SearchBox />
           <SelectionPanel />
+          <TourOverlay />
+          <TourController />
         </div>
 
         {/* Right sidebar */}

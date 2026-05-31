@@ -98,7 +98,28 @@ export interface FlyTarget {
   longitude: number
   latitude: number
   zoom: number
+  pitch?: number
+  bearing?: number
+  duration?: number
   nonce: number
+}
+
+// Guided-intro tour: a scripted sequence (camera + procedural events + popups)
+// that plays once on first load to explain the system to a new viewer. After
+// 'done' the sandbox is fully interactive in the normal way.
+export type TourStep =
+  | 'intro'        // popup: situation briefing, camera in on FOB
+  | 'deploy'       // procedurally placing relays one at a time
+  | 'meshed'       // popup: relays self-organized into a mesh
+  | 'incoming'     // drone spawned far out, approaching the perimeter
+  | 'detected'     // popup: drone has entered detection range
+  | 'routing'      // signal hops through mesh, FOB launches interceptor
+  | 'neutralized'  // popup: drone neutralized
+  | 'done'         // tour finished — normal sandbox mode
+
+export interface TourState {
+  active: boolean
+  step: TourStep
 }
 
 export interface LogEntry {
@@ -140,6 +161,7 @@ export interface SandboxState {
   rfLatest: Record<string, RFSample>
   rfSeries: Record<string, number[]>  // per-node rssi ring buffer
   rfAggregate: number[]               // mean rssi across online nodes over time
+  tour: TourState
   _relaySeq: number
   _fobSeq: number
   _droneSeq: number
@@ -306,8 +328,16 @@ export interface SandboxStore extends SandboxState {
   setPlacementMode: (m: PlacementMode) => void
   setHostileType: (t: HostileType) => void
   setSelectedId: (id: string | null) => void
-  flyToLocation: (longitude: number, latitude: number, zoom: number) => void
+  flyToLocation: (
+    longitude: number,
+    latitude: number,
+    zoom: number,
+    opts?: { pitch?: number; bearing?: number; duration?: number }
+  ) => void
   refreshElevations: () => void
+  startTour: () => void
+  setTourStep: (step: TourStep) => void
+  skipTour: () => void
   ingestRf: (sample: RFSample) => void
   connectRfSource: (url: string) => void
   disconnectRfSource: () => void
@@ -327,7 +357,8 @@ const initialState: SandboxState = {
   flyTarget: null,
   log: [],
   meshHealth: EMPTY_HEALTH,
-  playing: true,
+  // Sim is paused on first paint — the tour resumes it during action steps.
+  playing: false,
   speed: 1,
   swarmSize: SWARM_DEFAULT_SIZE,
   placementMode: 'relay',
@@ -340,6 +371,7 @@ const initialState: SandboxState = {
   rfLatest: {},
   rfSeries: {},
   rfAggregate: [],
+  tour: { active: true, step: 'intro' },
   _relaySeq: 0,
   _fobSeq: 1,
   _droneSeq: 0,
@@ -376,8 +408,37 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
   setHostileType: (t: HostileType) => set({ hostileType: t }),
   setSelectedId: (id: string | null) => set({ selectedId: id }),
 
-  flyToLocation: (longitude: number, latitude: number, zoom: number) =>
-    set({ flyTarget: { longitude, latitude, zoom, nonce: Date.now() } }),
+  flyToLocation: (
+    longitude: number,
+    latitude: number,
+    zoom: number,
+    opts?: { pitch?: number; bearing?: number; duration?: number }
+  ) =>
+    set({
+      flyTarget: {
+        longitude,
+        latitude,
+        zoom,
+        pitch: opts?.pitch,
+        bearing: opts?.bearing,
+        duration: opts?.duration,
+        nonce: Date.now(),
+      },
+    }),
+
+  startTour: () =>
+    set({
+      ...initialState,
+      fobs: [...DEFAULT_FOBS],
+      tour: { active: true, step: 'intro' },
+      playing: false,
+    }),
+
+  setTourStep: (step: TourStep) =>
+    set(state => ({ tour: { ...state.tour, step } })),
+
+  skipTour: () =>
+    set({ tour: { active: false, step: 'done' }, playing: true }),
 
   // Re-sample terrain elevation for all nodes (called once terrain tiles load).
   refreshElevations: () => {
@@ -431,7 +492,22 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
     })
   },
 
-  reset: () => set({ ...initialState, fobs: [...DEFAULT_FOBS], drones: [], interceptors: [], rfLatest: {}, rfSeries: {}, rfAggregate: [], log: [], animationTime: 0 }),
+  // Reset returns to a clean sandbox in normal (interactive) mode — the tour
+  // doesn't replay on reset, only on first load. Use startTour() explicitly to
+  // re-run the guided intro.
+  reset: () => set({
+    ...initialState,
+    fobs: [...DEFAULT_FOBS],
+    drones: [],
+    interceptors: [],
+    rfLatest: {},
+    rfSeries: {},
+    rfAggregate: [],
+    log: [],
+    animationTime: 0,
+    playing: true,
+    tour: { active: false, step: 'done' },
+  }),
 
   deployRing: () => {
     const state = get()

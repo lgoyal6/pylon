@@ -44,7 +44,7 @@ export default function MapView() {
 
   const [viewState, setViewState] = useState<Record<string, unknown>>(INITIAL_VIEW)
 
-  // Fly to a searched location.
+  // Fly to a searched location or a tour camera shot.
   useEffect(() => {
     if (!flyTarget) return
     setViewState(vs => ({
@@ -52,7 +52,9 @@ export default function MapView() {
       longitude: flyTarget.longitude,
       latitude: flyTarget.latitude,
       zoom: flyTarget.zoom,
-      transitionDuration: 2600,
+      pitch: flyTarget.pitch ?? vs.pitch,
+      bearing: flyTarget.bearing ?? vs.bearing,
+      transitionDuration: flyTarget.duration ?? 2600,
       transitionInterpolator: new FlyToInterpolator({ speed: 1.6 }),
     }))
   }, [flyTarget])
@@ -251,8 +253,11 @@ export default function MapView() {
     style.layers.forEach((l: any) => {
       if (l.type === 'symbol') {
         try {
-          map.setPaintProperty(l.id, 'text-color', '#2a2b2e')
+          // Off-white labels — readable against the dark basemap without
+          // screaming. Halo stays the page background so they don't smear.
+          map.setPaintProperty(l.id, 'text-color', '#c5c7cb')
           map.setPaintProperty(l.id, 'text-halo-color', '#08090a')
+          map.setPaintProperty(l.id, 'text-halo-width', 1.2)
         } catch {}
       }
       if (l.id.includes('boundary') || l.id.includes('admin')) {
