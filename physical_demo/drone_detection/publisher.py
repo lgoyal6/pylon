@@ -11,20 +11,31 @@ import config
 from state import iso_now
 
 
+def _metric(snapshot: dict, key: str, default):
+    """Real metric from the snapshot, or the config stub when the detector
+    hasn't supplied one (e.g. the /sim path)."""
+    value = snapshot.get(key)
+    return value if value is not None else default
+
+
 def build_event(snapshot: dict) -> dict:
-    """Assemble a detection event from the current state snapshot + config."""
+    """Assemble a detection event from the current state snapshot + config.
+
+    Real RF metrics (center_freq_hz, snr_db, occupied_bw_hz) come from the
+    snapshot when present; otherwise the config stub values keep the schema
+    stable (Iteration 0 / manual /sim behavior)."""
     return {
         "node_id": config.NODE_ID,
         "timestamp": iso_now(),
-        "center_freq_hz": config.CENTER_FREQ_HZ,
+        "center_freq_hz": _metric(snapshot, "center_freq_hz", config.CENTER_FREQ_HZ),
         "band": config.BAND,
         "anomaly_score": snapshot["anomaly_score"],
         "threshold": config.THRESHOLD,
-        "classification": config.CLASSIFICATION,
+        "classification": _metric(snapshot, "classification", config.CLASSIFICATION),
         "label": config.LABEL,
         "confidence": config.CONFIDENCE,
-        "snr_db": config.SNR_DB,
-        "occupied_bw_hz": config.OCCUPIED_BW_HZ,
+        "snr_db": _metric(snapshot, "snr_db", config.SNR_DB),
+        "occupied_bw_hz": _metric(snapshot, "occupied_bw_hz", config.OCCUPIED_BW_HZ),
     }
 
 

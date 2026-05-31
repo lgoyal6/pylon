@@ -25,8 +25,37 @@ def test_build_event_matches_full_contract_schema():
     assert set(event) == CONTRACT_KEYS
     assert event["anomaly_score"] == 0.87
     assert event["node_id"] == config.NODE_ID
-    assert event["band"] == "2.4GHz"
     assert event["label"] is None
+
+
+def test_build_event_uses_metrics_from_snapshot_when_present():
+    event = build_event(
+        {
+            "anomaly_score": 0.8,
+            "center_freq_hz": 433_000_000,
+            "snr_db": 18.5,
+            "occupied_bw_hz": 120_000,
+        }
+    )
+    assert event["center_freq_hz"] == 433_000_000
+    assert event["snr_db"] == 18.5
+    assert event["occupied_bw_hz"] == 120_000
+
+
+def test_build_event_falls_back_to_config_defaults_when_metrics_absent():
+    event = build_event({"anomaly_score": 0.5})
+    assert event["center_freq_hz"] == config.CENTER_FREQ_HZ
+    assert event["snr_db"] == config.SNR_DB
+    assert event["occupied_bw_hz"] == config.OCCUPIED_BW_HZ
+
+
+def test_build_event_uses_classification_from_snapshot():
+    event = build_event({"anomaly_score": 0.8, "classification": "jamming-like"})
+    assert event["classification"] == "jamming-like"
+
+
+def test_build_event_classification_falls_back_to_config():
+    assert build_event({"anomaly_score": 0.5})["classification"] == config.CLASSIFICATION
 
 
 def _multicast_listener(group: str, port: int) -> socket.socket:

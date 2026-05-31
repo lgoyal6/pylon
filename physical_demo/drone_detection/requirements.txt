@@ -1,6 +1,19 @@
-# Iteration 0 (plumbing, no SDR). Versions pinned to the dev environment.
+# Iteration 1 (real RF, energy-threshold detection).
 fastapi==0.136.1
 uvicorn[standard]==0.47.0
+numpy==2.3.5
+scipy==1.16.3
+
+# System dependency (not pip): librtlsdr provides the `rtl_sdr` CLI used by
+# capture.py.  macOS:  brew install librtlsdr
+# We intentionally do NOT use pyrtlsdr — its 0.4.0 bindings need a symbol the
+# Homebrew librtlsdr 2.0.2 build doesn't export.
+
+# Iteration 3 (2.4 GHz via ADALM-Pluto). pyadi-iio drives the Pluto; both pip
+# packages are pure-Python and import the NATIVE libiio at runtime — install that
+# separately (macOS: Analog Devices' libiio .pkg, not in Homebrew).
+pyadi-iio==0.0.19
+pylibiio==0.25
 
 # test-only
 httpx==0.28.1
