@@ -21,7 +21,7 @@ from collections import OrderedDict
 from typing import Callable, Dict, Optional, Tuple
 
 MCAST_GROUP = "239.1.1.1"
-MCAST_PORT = 50000
+MCAST_PORT = 5000
 HELLO_INTERVAL = 1.0
 PEER_TIMEOUT = 5.0
 RECV_BUF = 4096
