@@ -1,0 +1,46 @@
+"""UDP multicast publisher for detection events.
+
+Builds the detection-event JSON (the contract the teammate's relay consumes) and
+sends it to the multicast group. Iteration 0 fills the RF fields with the static
+stub values from `config`; the schema is what stays fixed for the relay.
+"""
+import json
+import socket
+
+import config
+from state import iso_now
+
+
+def build_event(snapshot: dict) -> dict:
+    """Assemble a detection event from the current state snapshot + config."""
+    return {
+        "node_id": config.NODE_ID,
+        "timestamp": iso_now(),
+        "center_freq_hz": config.CENTER_FREQ_HZ,
+        "band": config.BAND,
+        "anomaly_score": snapshot["anomaly_score"],
+        "threshold": config.THRESHOLD,
+        "classification": config.CLASSIFICATION,
+        "label": config.LABEL,
+        "confidence": config.CONFIDENCE,
+        "snr_db": config.SNR_DB,
+        "occupied_bw_hz": config.OCCUPIED_BW_HZ,
+    }
+
+
+class MulticastPublisher:
+    def __init__(self, group: str = None, port: int = None, ttl: int = None) -> None:
+        self.addr = (group or config.MCAST_GROUP, port or config.MCAST_PORT)
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        self.sock.setsockopt(
+            socket.IPPROTO_IP,
+            socket.IP_MULTICAST_TTL,
+            ttl if ttl is not None else config.MCAST_TTL,
+        )
+        self.sock.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_LOOP, 1)
+
+    def send(self, event: dict) -> None:
+        self.sock.sendto(json.dumps(event).encode("utf-8"), self.addr)
+
+    def close(self) -> None:
+        self.sock.close()
