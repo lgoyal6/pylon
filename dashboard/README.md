@@ -1,4 +1,4 @@
-# Lattice — Dashboard
+# Pylon — Dashboard
 
 Mesh relay simulation. A staggered ring of autonomous relays deploys around a FOB,
 discovers neighbors by proximity, forms a self-healing mesh, detects a hostile UAV,

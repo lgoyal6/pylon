@@ -1,4 +1,4 @@
-# design.md — Lattice
+# design.md — Pylon
 
 > Living design doc. Kept in sync with the implementation. Sections marked
 > **[v2]** changed when the dashboard became an interactive live sandbox
@@ -81,7 +81,7 @@ relays, not decorative unit types.)
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  // LATTICE                                   10:24 UTC  │
+│  // PYLON                                     10:24 UTC  │
 ├────────────────────────────────┬─────────────────────────┤
 │                                │  CONTROLS          [v2] │
 │                                │  ──────────────────     │
