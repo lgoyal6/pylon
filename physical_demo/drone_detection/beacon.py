@@ -24,10 +24,26 @@ TX_SCALE = 2 ** 14  # Pluto TX expects samples in int16 range; scale [-1,1] up t
 PLUTO_MAX_TX_DBM = 5.0  # nominal Pluto output at gain=0 @ 2.4 GHz (approximate, uncalibrated)
 
 
+RX_ANT_GAIN_DBI = 2.0  # assumed Pluto RX whip gain for the over-air received-power conversion
+
+
 def dbm_to_atten(target_dbm: float, max_dbm: float = PLUTO_MAX_TX_DBM) -> float:
     """Approximate tx_hardwaregain (dB) for a target *output* dBm. Uncalibrated
     (±a few dB); clamped to the Pluto's range [-89.75, 0]."""
     return float(min(0.0, max(-89.75, target_dbm - max_dbm)))
+
+
+def fspl_db(distance_m: float, freq_hz: float) -> float:
+    """Free-space path loss (dB)."""
+    return 20.0 * np.log10(distance_m) + 20.0 * np.log10(freq_hz) - 147.55
+
+
+def rx_dbm_to_atten(rx_dbm: float, freq_hz: float, distance_m: float = 1.0,
+                    grx_dbi: float = RX_ANT_GAIN_DBI, max_dbm: float = PLUTO_MAX_TX_DBM) -> float:
+    """tx_hardwaregain for a target *received* power at `distance_m` over-air
+    (free space): output = received + FSPL - Grx. Default 1 m. Uncalibrated."""
+    output_dbm = rx_dbm + fspl_db(distance_m, freq_hz) - grx_dbi
+    return dbm_to_atten(output_dbm, max_dbm)
 
 
 def tone(n: int, sample_rate: float, offset_hz: float, amplitude: float = 0.5) -> np.ndarray:
@@ -172,7 +188,10 @@ def main() -> None:
     parser.add_argument("--tx-atten", type=float, default=-10.0, metavar="DB",
                         help="TX gain (0=max, more negative=quieter; default -10 = strong/clean). Go more negative if the RTL saturates.")
     parser.add_argument("--tx-dbm", type=float, default=None, metavar="DBM",
-                        help="target OUTPUT power in dBm (approx, uncalibrated; overrides --tx-atten). Pluto max ~+5 dBm @2.4 GHz, min ~-85 dBm.")
+                        help="target RECEIVED power (dBm) at --distance over-air (default 1 m); adds free-space "
+                             "path loss to set the output. Overrides --tx-atten. Approx/uncalibrated (±few dB).")
+    parser.add_argument("--distance", type=float, default=1.0, metavar="M",
+                        help="reference distance in meters for --tx-dbm (default 1.0)")
     parser.add_argument("--waveform", choices=["tone", "noise", "barrage", "sweep", "hopper"], default="tone",
                         help="tone/noise = clean emitters; barrage/sweep = jamming-like; hopper = RC/drone-like GFSK frequency-hopper")
     parser.add_argument("--offset", type=float, default=200_000, metavar="HZ",
@@ -185,12 +204,15 @@ def main() -> None:
                         help="TX buffer length (the cyclic chunk)")
     args = parser.parse_args()
 
-    tx_atten = dbm_to_atten(args.tx_dbm) if args.tx_dbm is not None else args.tx_atten
+    if args.tx_dbm is not None:
+        tx_atten = rx_dbm_to_atten(args.tx_dbm, args.freq, distance_m=args.distance)
+        power_note = (f"~{args.tx_dbm:.0f} dBm received @ {args.distance:.0f} m "
+                      f"(atten {tx_atten:.1f} dB, ±few dB uncalibrated)")
+    else:
+        tx_atten = args.tx_atten
+        power_note = f"tx_atten={tx_atten} dB"
     beacon = PlutoBeacon(int(args.freq), int(args.sample_rate), tx_atten_db=tx_atten)
     waveform = _build_waveform(args)
-
-    power_note = (f"~{args.tx_dbm:.0f} dBm out (atten {tx_atten:.1f} dB, ±few dB uncalibrated)"
-                  if args.tx_dbm is not None else f"tx_atten={tx_atten} dB")
     print(f"Beacon ready: {args.waveform} @ {args.freq/1e6:.3f} MHz, {power_note}.  "
           f"(ISM self-test signal — not a jammer.)")
     print("Press Enter to TRANSMIT / stop.  Type q + Enter to quit.")

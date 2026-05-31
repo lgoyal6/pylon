@@ -5,7 +5,10 @@ exercised with an injected fake SDR, so these run without libiio or a Pluto.
 """
 import numpy as np
 
-from beacon import PlutoBeacon, apply_duty, band_limited_noise, chirp, dbm_to_atten, gfsk_hopper, tone
+from beacon import (
+    PlutoBeacon, apply_duty, band_limited_noise, chirp, dbm_to_atten, gfsk_hopper,
+    rx_dbm_to_atten, tone,
+)
 
 
 class FakeSdr:
@@ -82,6 +85,13 @@ def test_dbm_to_atten_maps_and_clamps():
     assert dbm_to_atten(-25) == -30.0
     assert dbm_to_atten(-100) == -89.75  # clamped to the Pluto's floor
     assert dbm_to_atten(20) == 0.0       # can't exceed max -> clamp to 0
+
+
+def test_rx_dbm_to_atten_1m_reference():
+    # received -65 dBm @1m, 2.44 GHz: FSPL ~40.2, Grx 2 -> output ~-26.8 -> atten ~-31.8
+    assert abs(rx_dbm_to_atten(-65, 2_440_000_000) - (-31.8)) < 1.0
+    # -90 received -> atten ~-56.8
+    assert abs(rx_dbm_to_atten(-90, 2_440_000_000) - (-56.8)) < 1.0
 
 
 def test_gfsk_hopper_is_constant_envelope():
