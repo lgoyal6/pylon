@@ -1,9 +1,0 @@
-{
-  "pid": 9749,
-  "port": 22576,
-  "token": "4939ea23-b303-435d-b401-c117ef616b7b",
-  "startedAt": "2026-05-31T06:11:10.581Z",
-  "serverPath": "/Users/datnguyen/.claude/skills/gstack/browse/src/server.ts",
-  "mode": "launched",
-  "configHash": "303a7eeccc03078b"
-}
