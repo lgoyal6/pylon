@@ -11,7 +11,6 @@ import { buildArcLayer } from '../layers/arcs'
 import { buildFobLinkLayer } from '../layers/fobLinks'
 import { buildDroneLayer, buildDroneTrackLayer } from '../layers/drone'
 import { buildPacketLayer } from '../layers/packets'
-import { buildFobLayer } from '../layers/intercept'
 import { buildBurstLayer } from '../layers/burst'
 import { buildInterceptorLayer, buildInterceptorTrailLayer } from '../layers/interceptor'
 import { MAPBOX_TOKEN, FOB_POSITION, TERRAIN_EXAGGERATION } from '../data/config'
@@ -84,7 +83,6 @@ export default function MapView() {
     buildFobLinkLayer(relays, fobs),
     buildSelectionLayer(relays, fobs, selectedId),
     buildRelayLayer(relays),
-    buildFobLayer(fobs),
     buildDroneTrackLayer(drones),
     buildDroneLayer(drones),
     buildInterceptorTrailLayer(interceptors),
