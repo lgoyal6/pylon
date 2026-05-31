@@ -43,13 +43,18 @@ def classify_emitter(
     flatness: float,
     sample_rate: float,
     jamming_bw_frac: float = config.JAMMING_BW_FRAC,
-    jamming_flatness: float = config.JAMMING_FLATNESS,
 ) -> str:
-    """Coarse, behavioral label for a *flagged* anomaly (not a signature match):
-    wide + noise-like -> "jamming-like"; otherwise occupied -> "comms-like".
-    Heuristic by design — characterizes behavior, not identity."""
+    """Coarse, behavioral label for a *flagged* anomaly (not a signature match).
+    Gates on occupied-bandwidth fraction: wide novel energy -> "jamming-like"
+    (a barrage or a swept jammer), narrow/channelized -> "comms-like".
+
+    `flatness` is reported alongside as a noise-like-vs-structured descriptor but
+    is deliberately NOT the gate: a clean swept jammer (chirp) is wideband yet
+    spectrally peaked, so a flatness gate would misread it as comms. Telling a
+    swept jammer from a genuinely wideband comms signal needs temporal features
+    (moving-peak tracking) — future work."""
     bw_frac = occupied_bw_hz / sample_rate if sample_rate else 0.0
-    if bw_frac >= jamming_bw_frac and flatness >= jamming_flatness:
+    if bw_frac >= jamming_bw_frac:
         return "jamming-like"
     if occupied_bw_hz > 0:
         return "comms-like"

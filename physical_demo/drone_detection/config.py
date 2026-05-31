@@ -16,6 +16,20 @@ MCAST_TTL = int(os.environ.get("DRONE_MCAST_TTL", "1"))
 # --- Node identity ----------------------------------------------------------
 NODE_ID = os.environ.get("DRONE_NODE_ID", "node-1")
 
+
+def _parse_relay(spec: str):
+    """'host:port' -> (host, int(port)); empty -> None. The mesh sensor-relay
+    ingress (relay_system/sensor_relay.py) we forward detection events to."""
+    if not spec:
+        return None
+    host, _, port = spec.rpartition(":")
+    return (host, int(port)) if host and port else None
+
+
+# Optional: also forward each detection event (UDP unicast) to a mesh sensor
+# relay's ingress, which rebroadcasts it as `sensor:<json>` across the mesh.
+RELAY_ADDR = _parse_relay(os.environ.get("DRONE_RELAY_ADDR", ""))
+
 # --- Stubbed RF fields (Iteration 0) ----------------------------------------
 # Real values arrive in Iteration 1 (SDR capture). For now these are static so
 # the detection-event schema is stable for the teammate's relay.
@@ -77,7 +91,7 @@ SIGMA_FLOOR_DB = float(os.environ.get("DRONE_SIGMA_FLOOR_DB", "1.0"))  # floor o
 
 # --- Emitter characterization (jamming-vs-comms) ----------------------------
 # Coarse behavioral label for a flagged anomaly (detector.classify_emitter):
-# wide occupancy + noise-like flatness -> "jamming-like"; else -> "comms-like".
-# Heuristic thresholds — tune against the live ambient.
+# wide occupancy -> "jamming-like"; narrow/channelized -> "comms-like". Spectral
+# flatness is reported alongside but does not gate (see classify_emitter).
+# Heuristic threshold — tune against the live ambient.
 JAMMING_BW_FRAC = float(os.environ.get("DRONE_JAMMING_BW_FRAC", "0.3"))  # occupied/captured bandwidth fraction
-JAMMING_FLATNESS = float(os.environ.get("DRONE_JAMMING_FLATNESS", "0.2"))  # spectral flatness (0..1)

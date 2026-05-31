@@ -73,6 +73,13 @@ def main() -> None:
     )
     parser.add_argument("--load-model", metavar="PATH", help="anomaly: load a saved baseline, skip learning")
     parser.add_argument("--save-model", metavar="PATH", help="anomaly: save the baseline after learning")
+    parser.add_argument(
+        "--relay",
+        metavar="HOST:PORT",
+        default=None,
+        help="also forward each detection event (UDP unicast) to a mesh sensor-relay ingress "
+             "(relay_system/sensor_relay.py), which rebroadcasts it across the mesh as sensor:<json>",
+    )
     args = parser.parse_args()
 
     if args.freq is not None:
@@ -93,6 +100,10 @@ def main() -> None:
     service.learn_seconds = args.learn_seconds
     service.load_model_path = args.load_model
     service.save_model_path = args.save_model
+    if args.relay:
+        host, _, port = args.relay.rpartition(":")
+        service.publisher.relay_addr = (host, int(port))
+        print(f"[relay] forwarding detection events to mesh sensor ingress {host}:{port}")
 
     # host 0.0.0.0 so the teammate's relay can reach the service over the LAN.
     uvicorn.run(service.app, host="0.0.0.0", port=args.port)
