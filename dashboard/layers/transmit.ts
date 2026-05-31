@@ -22,7 +22,7 @@ export function buildTransmitLayer(relays: Relay[], animationTime: number) {
       getRadius: animationTime,
       getLineColor: animationTime,
     },
-    getPosition: (d: Relay) => d.position,
+    getPosition: (d: Relay): [number, number, number] => [d.position[0], d.position[1], d.elevation ?? 0],
     getRadius: (d: Relay) => {
       const phase = ((animationTime / TRANSMIT_PERIOD_MS) + phaseOffset(d.id)) % 1
       return phase * d.range * 1000

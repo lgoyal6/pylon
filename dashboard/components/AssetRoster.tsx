@@ -58,8 +58,9 @@ export default function AssetRoster() {
             (d.position[0] - fob.position[0]) * 93,
             (d.position[1] - fob.position[1]) * 111))
         : 0
+      const kindLabel = d.kind === 'AIR' ? 'UAV' : d.kind === 'WATER' ? 'VSL' : 'VEH'
       rows.push({
-        id: d.id, kind: 'UAV', status: d.detected ? 'TRACKED' : 'INBOUND',
+        id: d.id, kind: kindLabel, status: d.detected ? 'TRACKED' : 'INBOUND',
         level: 'kill', detail: `${dist}km from FOB`,
       })
     })

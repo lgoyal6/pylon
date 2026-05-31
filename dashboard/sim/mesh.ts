@@ -1,3 +1,5 @@
+import { RELAY_RANGE_MIN_KM, RELAY_RANGE_SPREAD_KM } from '../data/config'
+
 export interface Relay {
   id: string
   position: [number, number]
@@ -5,6 +7,8 @@ export interface Relay {
   status: 'offline' | 'booting' | 'online' | 'destroyed'
   connections: string[]
   alert?: boolean
+  elevation?: number
+  pad?: number[][]   // 4 terrain-sampled corners; slants the node to the slope
 }
 
 export interface Connection {
@@ -37,7 +41,7 @@ export function placeRelays(
     relays.push({
       id: `R-${String(i + 1).padStart(2, '0')}`,
       position: [lng, lat],
-      range: 22 + Math.random() * 8,
+      range: RELAY_RANGE_MIN_KM + Math.random() * RELAY_RANGE_SPREAD_KM,
       status: 'offline',
       connections: [],
     })

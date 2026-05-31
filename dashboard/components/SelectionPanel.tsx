@@ -67,13 +67,15 @@ export default function SelectionPanel() {
       ['Engagement', 'auto-intercept at range'],
     )
   } else if (drone) {
-    subtitle = '[Hostile] UAV'
+    const cls = drone.kind === 'AIR' ? 'HOSTILE UAV' : drone.kind === 'WATER' ? 'HOSTILE VESSEL' : 'HOSTILE VEHICLE'
+    subtitle = `[Hostile] ${drone.kind === 'AIR' ? 'Aerial' : drone.kind === 'WATER' ? 'Surface' : 'Ground'}`
     const fob0 = fobs[0]
     const dist = fob0 ? Math.round(Math.hypot((drone.position[0] - fob0.position[0]) * 93, (drone.position[1] - fob0.position[1]) * 111)) : 0
     props.push(
       ['Track Id', drone.id],
-      ['Class', 'HOSTILE UAV'],
+      ['Class', cls],
       ['Status', drone.detected ? 'TRACKED' : 'INBOUND'],
+      ['Target FOB', drone.targetFobId ?? '—'],
       ['Latitude', drone.position[1].toFixed(5)],
       ['Longitude', drone.position[0].toFixed(5)],
       ['Range to FOB', `${dist} km`],

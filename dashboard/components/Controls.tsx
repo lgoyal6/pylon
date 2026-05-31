@@ -43,6 +43,8 @@ export default function Controls() {
   const setSwarmSize = useSimStore(s => s.setSwarmSize)
   const placementMode = useSimStore(s => s.placementMode)
   const setPlacementMode = useSimStore(s => s.setPlacementMode)
+  const hostileType = useSimStore(s => s.hostileType)
+  const setHostileType = useSimStore(s => s.setHostileType)
   const relayCount = useSimStore(s => s.relays.filter(r => r.status === 'online').length)
   const fobCount = useSimStore(s => s.fobs.length)
   const droneCount = useSimStore(s => s.drones.filter(d => d.alive).length)
@@ -82,15 +84,38 @@ export default function Controls() {
               }}
               onClick={() => setPlacementMode('fob')}
             >FOB</button>
+            <button
+              style={{
+                ...btnStyle,
+                color: placementMode === 'hostile' ? '#7a6a3a' : '#3a3b3e',
+                borderColor: placementMode === 'hostile' ? '#3a3b3e' : '#1a1b1e',
+              }}
+              onClick={() => setPlacementMode('hostile')}
+            >Hostile</button>
           </div>
           <span style={{ fontSize: '10px', color: '#3a3b3e', lineHeight: 1.5 }}>
-            click map to place a {placementMode === 'fob' ? 'FOB' : 'relay'} · click a relay to destroy it
+            {placementMode === 'hostile'
+              ? `click map to place a ${hostileType} hostile (sea = water only)`
+              : `click map to place a ${placementMode === 'fob' ? 'FOB' : 'relay'} · click a relay to destroy it`}
           </span>
         </div>
 
         {/* Swarm */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-          <span style={labelStyle}>Drone Swarm</span>
+          <span style={labelStyle}>Hostile Swarm</span>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            {(['AIR', 'WATER', 'GROUND'] as const).map(t => (
+              <button
+                key={t}
+                onClick={() => setHostileType(t)}
+                style={{
+                  ...btnStyle,
+                  color: hostileType === t ? '#9a9b9e' : '#3a3b3e',
+                  borderColor: hostileType === t ? '#3a3b3e' : '#1a1b1e',
+                }}
+              >{t}</button>
+            ))}
+          </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
               style={stepBtn}

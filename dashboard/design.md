@@ -128,8 +128,10 @@ Operator actions:
   re-form to any in-range neighbor.
 - **Click map (FOB mode)** — drops a new FOB at the clicked coordinate. Multiple
   FOBs are supported; a default FOB-1 always exists. **[v2]**
-- **Click a relay** — destroys it and triggers mesh self-heal (rerouted links go
-  muted purple). Works in any placement mode.
+- **Click a relay** — **removes it entirely [v5.6]** (no leftover gray marker —
+  it's filtered from the relay array, and its pad/ring/pulse/signals all go with
+  it; RF buffers and selection are cleared too) and triggers mesh self-heal
+  (rerouted links go muted purple). Works in any placement mode.
 - **Launch Swarm** — spawns N hostile drones (size 1–12) from a random edge
   around the primary FOB. Each flies to the **nearest** FOB; relays detect them
   and route threat packets through the mesh; the FOB intercepts on close
@@ -161,9 +163,10 @@ interface Relay {
 ```
 
 Ring placement uses polar coordinates with jitter around a center (the primary
-FOB). Config: `RELAY_MIN_RADIUS_KM = 22`, `RELAY_MAX_RADIUS_KM = 32`, relay
-`range = 22 + rand*8` km. These values are tuned so the ring is reliably
-connected (a sparse ring can't route to the FOB).
+FOB). Config **[v5.2 — ranges reduced]**: `RELAY_MIN_RADIUS_KM = 11`,
+`RELAY_MAX_RADIUS_KM = 17`, relay `range = RELAY_RANGE_MIN_KM(9) +
+rand*RELAY_RANGE_SPREAD_KM(5)` km, `FOB_LINK_RANGE_KM = 22`. Tuned so the ring
+stays connected at the smaller scale (~10 links for a 10-node ring).
 
 ### Connection Formation
 
@@ -172,8 +175,9 @@ bidirectional link. Latency ≈ `dist * 0.3 + rand*5` ms.
 
 ### Mesh Self-Healing
 
-On destroy: mark `destroyed`, drop all its links, clear it from neighbor arrays,
-then re-run `formConnections()` on survivors. Connections that did not exist
+On removal **[v5.6: filter out entirely rather than marking `destroyed`, so no
+gray dot lingers]**, drop all its links, clear it from neighbor arrays, then
+re-run `formConnections()` on survivors. Connections that did not exist
 before are marked `rerouted` and render muted purple (#5a4a6a).
 
 ### Shortest Path (packet routing) **[v2 — multi-FOB]**
@@ -207,23 +211,45 @@ an `RFSource` interface:
   the bottom dock's **Connect Live** control.
 
 Store: `rfMode`, `rfLatest[nodeId]`, `rfSeries[nodeId]` (ring buffer),
-`rfAggregate` (mean rssi over time). The Selection "Series" tab and the bottom
-dock plot these. To go live: `connectRfSource(url)`.
+`rfAggregate` (the mesh carrier over time). The Selection "Series" tab and the
+bottom dock plot these. To go live: `connectRfSource(url)`.
 
-## Tracking Interceptor **[v4 — replaces instant intercept]**
+**Gated-carrier model [v4.1].** Synthetic RF is modeled as a real gated RF
+carrier: each relay transmits the carrier pulsed on/off by a gate
+(`RF_GATE_PERIOD`/`RF_GATE_DUTY`), producing short bursts up to the carrier
+power on a noise floor (`RF_NOISE_FLOOR_DBM ≈ -95`). Per-node gates are
+phase-offset; the aggregate uses one shared gate so the default view reads as a
+clean pulsed carrier. Band is 349.7 MHz. Emit cadence 70 ms, buffer 256. This
+matches the look of a captured gated-carrier signal rather than a smooth line.
+
+## Tracking Interceptor **[v4 / v5.4]**
 
 When a pylon detects a drone, threat data routes to the nearest FOB. Once it
 lands (+ `FOB_REACTION_MS`), the FOB **launches a tracking interceptor** — a fast
-munition (`INTERCEPTOR_SPEED_SCALE = 2.4× drone speed`) that flies from the FOB
-and chases the drone's live position, detonating within
-`INTERCEPTOR_IMPACT_KM`. This takes threats out at range, not point-blank. A
-point-blank kill at the FOB perimeter remains only as a fail-safe. Interceptors
-render as a bright dot + short red trail (`layers/interceptor.ts`).
+munition (`INTERCEPTOR_SPEED_SCALE = 2.8× drone speed`) that flies from the FOB
+and chases the drone's live position, detonating within `INTERCEPTOR_IMPACT_KM`.
+Rendered as a bright orange dot + trail (`layers/interceptor.ts`); on impact an
+**expanding red burst ring** plays (`layers/burst.ts`, `Burst` in the store) —
+there are no straight intercept lines. A point-blank kill at the small
+`INTERCEPT_RADIUS_KM (3)` perimeter remains only as a fail-safe.
+
+**[v5.4] Engagement timing.** With the reduced relay ranges, packet travel
+(`PACKET_DURATION_MS`) and reaction (`FOB_REACTION_MS`) were shortened so the
+interceptor launches and reaches the drone *before* it hits the perimeter — the
+projectile makes the kill, not the fail-safe.
+
+## Location Search **[v5.4]**
+
+`SearchBox.tsx` (floats top-center over the map) geocodes a query via the Mapbox
+Geocoding API and calls `flyToLocation(lng, lat, zoom)` (zoom chosen by place
+type). The Map runs a **controlled** `viewState` and animates there with a
+`FlyToInterpolator`. Search "Japan" → the camera flies to Japan.
 
 ## Panels **[v4]**
 
 - **Legend** (`Legend.tsx`, floats top-left over map): node / mesh / threat
   color key.
+- **SearchBox** (`SearchBox.tsx`, floats top-center): geocode + fly-to.
 - **SelectionPanel** (`SelectionPanel.tsx`, floats top-right): Properties /
   Series / Events tabs for the selected node, with a Filter box. Series shows
   the node's RF chart; Events filters the log to that id.
@@ -246,26 +272,64 @@ interface Fob { id: string; position: [number, number] }
 
 ---
 
-## Drones & Swarms **[v2 — array, was a single scripted drone]**
+## Hostiles & Swarms **[v4.2 — typed hostiles]**
 
 ```ts
+type HostileType = 'AIR' | 'WATER' | 'GROUND'
 interface Drone {
   id: string
-  position: [number, number]
-  heading: number
-  alive: boolean
-  detected: boolean
-  track: [number, number][]
-  killAt: number | null
+  kind: HostileType
+  position, heading, alive, detected, track, killAt, engageAt, engaged
+  targetFobId: string | null
 }
 ```
 
-Each frame, every live drone steps toward its nearest FOB at a
-demo-accelerated speed (`DRONE_SPEED_KMH * DRONE_SIM_SCALE`, since real 120 km/h
-would take ~20 min to cross). On first entering a relay's range it is detected
-(spawns a packet, relay goes amber). Within the FOB intercept radius it is
-killed (red intercept line, removed after ~1.2 s). Relay `alert` is recomputed
-each frame from live threats in range.
+Three hostile classes, chosen by the **Hostile Swarm** selector (AIR / WATER /
+GROUND): air UAVs (fastest, amber chevron `/drone.svg`), surface vessels
+(`HOSTILE_SPEED_KMH.WATER`, steel-blue `/vessel.svg`), ground vehicles (slowest,
+olive `/vehicle.svg`). Per-kind speed scales `baseStepDeg`.
+
+**Spawning [v4.3 / v5.5].** Two ways: **Launch Swarm** spawns N **within the
+current on-screen viewport** (near a random edge, via `getViewport()` registered
+by the Map), or **Hostile placement mode** (CLICK PLACES → Hostile) drops one per
+map click. Viewport spawning lets you run the sim anywhere: fly/search to a
+region, place a FOB on screen, and launched hostiles spawn on-screen and head to
+the nearest FOB. If no FOB is in view, a warning is logged. Vessels/vehicles fall
+back to a random valid in-view point (water / land) when the edge is the wrong
+surface. Falls back to a ring around the primary FOB when no map is present.
+
+**Terrain-constrained hostiles [v4.3 / v5.2].** `sim/geo.ts` holds a land/water
+tester and an elevation sampler, both registered by the Map (water via
+`queryRenderedFeatures` on the `water` layer; elevation via
+`queryTerrainElevation`; off-screen/unknown → allow / 0).
+- **WATER** hostiles can only be *placed* on water and only move over water.
+- **GROUND** hostiles can only be *placed* on land and only move over land, and
+  are **slowed by slope** — each step samples elevation at current vs. next
+  position and scales speed by `1/(1 + GROUND_SLOPE_FACTOR·slope)`, so climbing
+  steep terrain is slow.
+- Both deflect (±40/75/110/150°) to follow the shoreline when blocked, else hold.
+  Air is unconstrained.
+
+**Nodes follow the surface [v5.2].** Relays and FOBs sample terrain elevation on
+placement (`elevationAt`) and store it; every node/mesh layer (relay dots,
+detection rings, transmit pulses, FOBs, arcs, signal dots, packets, selection
+ring) renders at `[lng, lat, elevation]` so they sit on the 3D terrain instead
+of floating at sea level. `refreshElevations()` re-samples once DEM tiles load
+(map `idle`) so the default FOB-1 and anything placed early gets its height.
+
+**Slanted pads [v5.3].** Each relay/FOB also stores a `pad`: a small square
+footprint (`NODE_PAD_HALF_DEG ≈ 0.9km`) whose four corners sample terrain
+elevation (`computePad`). `layers/pads.ts` draws these as a `PolygonLayer` with
+3D vertices, so the pad **tilts to match the slope** the node sits on — relays on
+a hillside visibly slant. Filled translucent + stroked edge, colored by kind
+(relay steel / FOB gray / amber on alert). Recomputed in `refreshElevations`.
+
+Each frame every live hostile steers toward its **nearest FOB** — placing a new,
+closer FOB **reroutes live hostiles** to it (logged `REROUTING → FOB-x`), tracked
+via `targetFobId`. On first entering a relay's range it is detected (relay goes
+amber, a **white** threat packet routes to the nearest FOB). The FOB then
+launches a tracking interceptor (see below). Demo-accelerated speed
+(`* DRONE_SIM_SCALE`).
 
 ---
 
@@ -283,7 +347,10 @@ clicks can destroy a relay. Color/radius transitions 500/300 ms.
 ### Inter-node Signals — ScatterplotLayer **[v3 — new]**
 Two muted dots per active link slide from `from`→`to`, position =
 `lerp(a, b, ((animationTime/1600)+offset+phase)%1)`, offset hashed from the
-connection id. Green `[90,150,110,180]`, purple `[120,100,140,180]` on rerouted.
+connection id. Green `[90,150,110,180]` for normal mesh traffic, purple
+`[120,100,140,180]` on rerouted links, and **white `[230,232,236]` when either
+endpoint relay is on alert** — a link carrying threat-detection data transmits
+white, not green **[v4.2]**. Detection packets (TripsLayer) are likewise white.
 `radiusMinPixels: 1.5`. Computed each frame; nothing stored in the sim.
 
 ### Selection Ring — ScatterplotLayer (stroked) **[v3 — new]**
@@ -304,8 +371,8 @@ alert). `TRANSMIT_PERIOD_MS = 2400`.
 
 ### Mesh Connections — ArcLayer
 Source/target colors muted teal `[58,90,74,160]`, or muted purple
-`[90,74,106,160]` when `rerouted`. **[v2]** `getHeight: 1.0` (was 0.25) for the
-tall sweeping arcs in the reference; `greatCircle: false`; `widthMinPixels: 1.5`,
+`[90,74,106,160]` when `rerouted`. `getHeight: 0.35` **[v4.1 — lowered from 1.0;
+the tall arcs were too much]**; `greatCircle: false`; `widthMinPixels: 1.5`,
 `widthMaxPixels: 3`.
 
 ### Data Packets — TripsLayer
@@ -314,9 +381,10 @@ animationTime`; `trailLength = PACKET_TRAIL_MS (600)`. Color muted green
 `[74,122,90,220]`. Multiple concurrent packets supported (each carries its own
 start/end time). `PACKET_DURATION_MS = 2500`.
 
-### Drone — IconLayer
-Data is the live-drone array. `getAngle: -heading`, color muted amber
-`[122,106,58,220]`, icon `/drone.svg` (chevron).
+### Drone — IconLayer **[v4.2 — per-kind icon/color]**
+Data is the live-hostile array. Icon + color by `kind`: AIR `/drone.svg` amber
+(rotated by heading), WATER `/vessel.svg` steel-blue, GROUND `/vehicle.svg`
+olive (ground/surface icons aren't rotated).
 
 ### Drone Track — PathLayer
 One dashed faint-amber path per drone (`PathStyleExtension({ dash: true })`),
@@ -334,17 +402,37 @@ Data is the FOB array. Fill `[154,155,158,200]` — brightest element.
 ## Mapbox Configuration
 
 ```ts
-const MAP_CONFIG = {
-  style: 'mapbox://styles/mapbox/dark-v11',
-  center: [52.1, 32.9],     // primary FOB
+const INITIAL_VIEW = {
+  longitude: 52.1, latitude: 32.9,  // primary FOB
   zoom: 9,
-  pitch: 45,
+  pitch: 55,        // [v5] raised from 45 to show 3D terrain
   bearing: -15,
+  maxPitch: 75,
 }
 ```
 
 On `style.load`: background and water → `#08090a`; all symbol label text →
 `#2a2b2e` with `#08090a` halo; boundary/admin lines → `#1a1b1e` at 0.3 opacity.
+
+**Mercator projection [v5.7].** The map is pinned to `mercator` (prop +
+`map.setProjection('mercator')`). deck.gl draws the markers in a flat mercator
+viewport; with Mapbox's default globe projection (which kicks in when zoomed
+out) the FOBs/relays/drones would float off the curved globe ("in space").
+Mercator keeps basemap and overlays aligned at every zoom.
+
+**3D terrain [v5].** Adds a `mapbox-dem` raster-dem source and
+`map.setTerrain({ source: 'mapbox-dem', exaggeration: TERRAIN_EXAGGERATION })`
+(1.5) so relief shows under the pitch. A subtle dark `hillshade` layer
+(`iv-hillshade`, exaggeration 0.45, near-black shadows, `#26282c` highlights) is
+inserted below the first symbol layer so labels stay readable. `setFog` adds
+dark atmospheric depth. deck.gl overlays draw on top of the terrain (no
+occlusion), so nodes/arcs stay visible. Requires terrain tiles (a GPU).
+
+**Topographic contours [v5.1].** A `mapbox-terrain-v2` vector source feeds two
+line layers below the labels: `iv-contour` (all elevation isolines, muted amber
+`#6a5836` at ~0.26 opacity, width interpolated by zoom) and `iv-contour-index`
+(index contours via `['has','index']`, brighter `#8a7344` at ~0.42, thicker).
+Gives the dark map a topographic-isoline read without breaking the palette.
 
 DeckGL `controller: true`; `getCursor` is crosshair normally, pointer when
 hovering a relay; top-level `onClick` routes to destroy (hit a relay) or place
@@ -361,8 +449,9 @@ dashboard/
                   BottomDock [v4], SignalChart [v4], EventLog, MeshStatus, TopBar
   layers/         relays (+ rings, selection), transmit, signals, arcs, drone,
                   interceptor [v4], packets, intercept (+ fob)
-  sim/            state.ts (zustand sandbox store), mesh.ts, pathfinding.ts, rf.ts [v4]
+  sim/            state.ts (zustand sandbox store), mesh.ts, pathfinding.ts, rf.ts [v4], geo.ts [v4.3]
   data/           config.ts
+  public/         drone.svg, vessel.svg [v4.2], vehicle.svg [v4.2]
   public/         drone.svg
 ```
 
