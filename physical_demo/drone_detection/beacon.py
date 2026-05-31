@@ -80,15 +80,15 @@ def chirp(n: int, sample_rate: float, bw_hz: float, amplitude: float = 0.5) -> n
     return (amplitude * np.exp(1j * phase)).astype(np.complex64)
 
 
-def gfsk_hopper(n: int, sample_rate: float, n_channels: int = 5, sps: int = None,
+def gfsk_hopper(n: int, sample_rate: float, bit_rate: float = 1_000_000, n_channels: int = 5,
                amplitude: float = 0.5, seed: int = 0) -> np.ndarray:
     """GFSK bursts hopping across a few narrowband channels — a *feature-faithful*
-    'RC-link-like' emitter (GFSK, ~1 MHz, frequency-hopping), like a toy drone's
-    nRF24/Beken link or Bluetooth. A controllable 'unknown' for the open-world
-    demo + a training signal for the classifier. Not an exact protocol clone."""
+    'RC-link-like' emitter (GFSK frequency-hopping), like a toy drone's nRF24/Beken
+    link or Bluetooth. `bit_rate` sets the symbol rate (and ~the per-channel
+    bandwidth); nRF24 toys are typically 1 Mbps or 250 kbps. A controllable
+    'unknown' for the open-world demo + training signal. Not an exact protocol clone."""
     rng = np.random.default_rng(seed)
-    if sps is None:
-        sps = max(2, int(sample_rate / 1_000_000))  # ~1 Msym/s
+    sps = max(2, int(round(sample_rate / bit_rate)))  # samples per symbol (needs bit_rate <= sample_rate/2)
     offsets = np.linspace(-0.3, 0.3, n_channels) * sample_rate
     # Gaussian pulse-shaping kernel (the 'G' in GFSK), numpy-only.
     k = np.arange(-2 * sps, 2 * sps + 1)
@@ -171,7 +171,7 @@ def _build_waveform(args) -> np.ndarray:
         # metric stays valid (a full-band sweep saturates the noise-floor estimate)
         wf = chirp(n, args.sample_rate, 0.4 * args.sample_rate)
     elif args.waveform == "hopper":
-        wf = gfsk_hopper(n, args.sample_rate)  # RC/drone-like GFSK frequency-hopper
+        wf = gfsk_hopper(n, args.sample_rate, bit_rate=args.bitrate * 1e6)  # RC/drone-like GFSK hopper
     else:
         wf = tone(n, args.sample_rate, args.offset)
     return apply_duty(wf, args.duty)
@@ -198,6 +198,8 @@ def main() -> None:
                         help="tone offset from center (avoids the DC bin)")
     parser.add_argument("--bw", type=float, default=300_000, metavar="HZ",
                         help="noise bandwidth (--waveform noise)")
+    parser.add_argument("--bitrate", type=float, default=1.0, metavar="MBPS",
+                        help="GFSK bit rate in Mbps for --waveform hopper (nRF24 toys ~1 or 0.25; needs sample-rate >= 2x)")
     parser.add_argument("--duty", type=float, default=1.0, metavar="FRAC",
                         help="on-fraction per buffer (<1 = sporadic/pulsed bursts; 1.0 = continuous)")
     parser.add_argument("--buffer", type=int, default=2 ** 15, metavar="SAMPLES",

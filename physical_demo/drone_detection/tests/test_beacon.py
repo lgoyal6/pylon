@@ -94,6 +94,15 @@ def test_rx_dbm_to_atten_1m_reference():
     assert abs(rx_dbm_to_atten(-90, 2_440_000_000) - (-56.8)) < 1.0
 
 
+def test_gfsk_hopper_bitrate_sets_bandwidth():
+    # GFSK occupied bandwidth scales with bit rate; higher rate -> wider.
+    from features import window_features
+    fs, n = 8_000_000, 2 ** 15
+    narrow = window_features(gfsk_hopper(n, fs, bit_rate=250_000, n_channels=1, seed=0), fs)["occupied_bw"]
+    wide = window_features(gfsk_hopper(n, fs, bit_rate=2_000_000, n_channels=1, seed=0), fs)["occupied_bw"]
+    assert wide > narrow
+
+
 def test_gfsk_hopper_is_constant_envelope():
     # GFSK is constant-envelope (FM) — the defining feature of an RC/BT-like link.
     x = gfsk_hopper(2 ** 14, 4_000_000, seed=0)
