@@ -14,11 +14,15 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 
 import config
+from bus import DetectionBus
 from publisher import MulticastPublisher, build_event
 from state import DetectionState
 
 state = DetectionState()
 publisher = MulticastPublisher()
+# Decoupling buffer: detection sources push events here; a sink thread drains them
+# to the mesh. Swap/add detection methods without touching the publishing path.
+bus = DetectionBus()
 
 # Optional hands-free demo toggling; set by main.py before launch (0 = off).
 auto_toggle_s = 0.0
@@ -55,7 +59,7 @@ class DetectorRunner:
         capture,
         detector,
         state: DetectionState,
-        publisher: MulticastPublisher,
+        bus: DetectionBus,
         center_freq_hz: int,
         debounce_on: int = config.DEBOUNCE_ON,
         debounce_off: int = config.DEBOUNCE_OFF,
@@ -65,7 +69,7 @@ class DetectorRunner:
         self.capture = capture
         self.detector = detector
         self.state = state
-        self.publisher = publisher
+        self.bus = bus  # push detection events here; the sink meshes them
         self.center_freq_hz = center_freq_hz
         self.debounce_on = debounce_on  # consecutive detections to flip on (fast)
         self.debounce_off = debounce_off  # consecutive misses to clear (hangover)
@@ -93,7 +97,7 @@ class DetectorRunner:
                     classification=result.get("classification"),
                 )
                 if rising:
-                    self.publisher.send(build_event(self.state.event_snapshot()))
+                    self.bus.publish(self.state.event_snapshot())
                     if self.log_edges:
                         print(f"[detect] {time.strftime('%H:%M:%S')}  🚨 DETECTED "
                               f"[{result.get('classification')}]  score={result['anomaly_score']:.2f} "
@@ -124,10 +128,25 @@ class SimRequest(BaseModel):
     anomaly_score: float | None = None
 
 
+def _mesh_event(snapshot: dict) -> None:
+    """The sink: build the contract event from a bus snapshot and send it to the
+    mesh. The ONLY place that calls publisher.send — detection sources never touch
+    the mesh directly, they just publish snapshots to the bus."""
+    publisher.send(build_event(snapshot))
+
+
+def _drain_bus(stop_event: threading.Event) -> None:
+    """Drain detection events from the bus to the mesh until stopped."""
+    while not stop_event.is_set():
+        snapshot = bus.get(timeout=0.5)
+        if snapshot is not None:
+            _mesh_event(snapshot)
+
+
 def _publish_current() -> None:
-    """Publish a detection event from the current state. Uses event_snapshot so
-    real RF metrics are sent when present (stubs only fall back via build_event)."""
-    publisher.send(build_event(state.event_snapshot()))
+    """Push a detection event from the current state onto the bus (the sink meshes
+    it). event_snapshot carries real RF metrics when present."""
+    bus.publish(state.event_snapshot())
 
 
 def _toggle() -> None:
@@ -177,7 +196,7 @@ def _start_capture_thread():
             detector._save_path = save_model_path  # _fit() persists when learning completes
         if not load_model_path:
             print(f"[anomaly] learning ambient for ~{learn_seconds:.0f}s ({learn_windows} windows); keep the target OFF")
-    runner = DetectorRunner(capture, detector, state, publisher, center_freq_hz=center_freq_hz, log_edges=True)
+    runner = DetectorRunner(capture, detector, state, bus, center_freq_hz=center_freq_hz, log_edges=True)
     stop_event = threading.Event()
     thread = threading.Thread(target=runner.run, args=(stop_event,), daemon=True)
     thread.start()
@@ -189,6 +208,11 @@ async def lifespan(app: FastAPI):
     tasks = [asyncio.create_task(_heartbeat())]
     if auto_toggle_s > 0:
         tasks.append(asyncio.create_task(_auto_toggle()))
+
+    # Sink: drain the detection bus to the mesh in a daemon thread.
+    sink_stop = threading.Event()
+    sink_thread = threading.Thread(target=_drain_bus, args=(sink_stop,), daemon=True)
+    sink_thread.start()
 
     capture_handle = None
     if source == "live":
@@ -206,6 +230,8 @@ async def lifespan(app: FastAPI):
             stop_event, thread = capture_handle
             stop_event.set()
             thread.join(timeout=2.0)
+        sink_stop.set()
+        sink_thread.join(timeout=2.0)
         publisher.close()
 
 

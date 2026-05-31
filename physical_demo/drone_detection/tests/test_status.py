@@ -13,6 +13,8 @@ ISO_Z = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$")
 @pytest.fixture
 def client():
     service.state.clear()  # isolate the module-level singleton between tests
+    while service.bus.get(timeout=0) is not None:  # drain leftover bus events
+        pass
     return TestClient(service.app)
 
 
@@ -44,6 +46,7 @@ def test_sim_false_clears_status(client):
 def test_sim_rising_edge_publishes_detection_event(client, multicast_listener):
     listener = multicast_listener()
     client.post("/sim", json={"detected": True, "anomaly_score": 0.66})
+    service._mesh_event(service.bus.get(timeout=1))  # sink: bus -> mesh
     data, _ = listener.recvfrom(65535)
     event = json.loads(data)
     assert event["anomaly_score"] == 0.66

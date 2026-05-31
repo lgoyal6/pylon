@@ -9,6 +9,8 @@ import service
 @pytest.fixture(autouse=True)
 def reset_state():
     service.state.clear()
+    while service.bus.get(timeout=0) is not None:  # drain leftover bus events
+        pass
 
 
 def test_toggle_flips_detection_off_and_on():
@@ -20,7 +22,8 @@ def test_toggle_flips_detection_off_and_on():
 
 def test_toggle_to_detected_publishes_event(multicast_listener):
     listener = multicast_listener()
-    service._toggle()  # not-detected -> detected, should publish
+    service._toggle()  # not-detected -> detected, should publish (-> bus)
+    service._mesh_event(service.bus.get(timeout=1))  # sink: bus -> mesh
     data, _ = listener.recvfrom(65535)
     event = json.loads(data)
     assert event["anomaly_score"] == config.DEFAULT_ANOMALY_SCORE

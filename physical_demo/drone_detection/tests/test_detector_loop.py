@@ -14,6 +14,8 @@ N = config.WINDOW_SAMPLES
 @pytest.fixture(autouse=True)
 def reset_state():
     service.state.clear()
+    while service.bus.get(timeout=0) is not None:  # drain leftover events between tests
+        pass
 
 
 def _noise(seed):
@@ -53,7 +55,7 @@ def _runner(windows, debounce_on, debounce_off=10):
     cap = FakeCapture(windows)
     det = EnergyThresholdDetector(sample_rate=FS)
     return service.DetectorRunner(
-        cap, det, service.state, service.publisher,
+        cap, det, service.state, service.bus,
         center_freq_hz=433_000_000, debounce_on=debounce_on, debounce_off=debounce_off,
     )
 
@@ -93,7 +95,8 @@ def test_publish_current_carries_real_metrics_when_detected(multicast_listener):
     # not the status snapshot (which would leak the config stub values).
     service.state.set_detected(0.5, center_freq_hz=94_100_000, snr_db=20.0, occupied_bw_hz=180_000)
     listener = multicast_listener()
-    service._publish_current()
+    service._publish_current()  # -> bus
+    service._mesh_event(service.bus.get(timeout=1))  # sink: bus -> mesh
     event = json.loads(listener.recvfrom(65535)[0])
     assert event["center_freq_hz"] == 94_100_000
     assert event["snr_db"] == 20.0
@@ -108,7 +111,7 @@ def test_anomaly_detector_in_loop_learns_then_flips_on_novel():
     windows = [_noise(s) for s in range(learn)] + [_noise_plus_signal(900)]
     cap = FakeCapture(windows)
     runner = service.DetectorRunner(
-        cap, det, service.state, service.publisher,
+        cap, det, service.state, service.bus,
         center_freq_hz=433_000_000, debounce_on=1, debounce_off=10,
     )
     for _ in range(learn):  # learn phase stays quiet
@@ -123,6 +126,7 @@ def test_runner_publishes_real_metrics_on_rising_edge(multicast_listener):
     listener = multicast_listener()
     runner = _runner([_noise_plus_signal(s) for s in range(5)], debounce_on=1)
     runner.step()
+    service._mesh_event(service.bus.get(timeout=1))  # sink: bus -> mesh
     event = json.loads(listener.recvfrom(65535)[0])
     assert event["center_freq_hz"] == 433_000_000
     assert event["occupied_bw_hz"] >= runner.detector.min_occupied_bw_hz
@@ -146,5 +150,6 @@ def test_runner_publishes_classification_on_rising_edge(multicast_listener):
     listener = multicast_listener()
     runner = _runner([_noise_plus_signal(s) for s in range(5)], debounce_on=1)
     runner.step()
+    service._mesh_event(service.bus.get(timeout=1))  # sink: bus -> mesh
     event = json.loads(listener.recvfrom(65535)[0])
     assert event["classification"] in ("comms-like", "jamming-like")
