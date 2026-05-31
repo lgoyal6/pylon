@@ -74,6 +74,13 @@ def _classify_iface(name: str, ip: str, bcast: Optional[str]) -> Tuple[bool, str
 
     Returns (usable, reason). The reason string is shown at startup so a
     user looking at the log can immediately see why an interface was skipped.
+
+    Note on CGNAT (100.64.0.0/10): this range is used by both VPNs
+    (Tailscale, iCloud Private Relay, Cloudflare WARP — all on utun* names)
+    AND by large public networks (schools, dorms, hotels, mobile carriers
+    DHCPing clients into a CGNAT subnet). We trust the name-prefix filter
+    above to catch the VPN cases, and accept CGNAT on a real NIC (en*,
+    eth*, bridge*) as a usable LAN.
     """
     if name.startswith(_SKIP_IFACE_PREFIXES):
         return False, "name excluded (VPN/virtual)"
@@ -81,11 +88,13 @@ def _classify_iface(name: str, ip: str, bcast: Optional[str]) -> Tuple[bool, str
         return False, "loopback"
     if _is_apipa(ip):
         return False, "APIPA self-assigned (no DHCP — interface has no real network)"
-    if _is_cgnat(ip):
-        return False, "CGNAT range (Tailscale/Private Relay/WARP — virtual overlay)"
     if not bcast:
         return False, "point-to-point (no broadcast address)"
-    return True, "RFC1918 LAN" if _is_rfc1918(ip) else "non-private but has broadcast"
+    if _is_rfc1918(ip):
+        return True, "RFC1918 LAN"
+    if _is_cgnat(ip):
+        return True, "CGNAT LAN (school/hotel/carrier DHCP)"
+    return True, "public-routable IP with broadcast"
 
 
 def _list_active_ipv4_interfaces() -> List[Tuple[str, str, Optional[str]]]:
