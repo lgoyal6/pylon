@@ -1,4 +1,4 @@
-# design.md — Iron Veil
+# design.md — Lattice
 
 > Living design doc. Kept in sync with the implementation. Sections marked
 > **[v2]** changed when the dashboard became an interactive live sandbox
@@ -81,7 +81,7 @@ relays, not decorative unit types.)
 
 ```
 ┌──────────────────────────────────────────────────────────┐
-│  // IRON VEIL                                 10:24 UTC  │
+│  // LATTICE                                   10:24 UTC  │
 ├────────────────────────────────┬─────────────────────────┤
 │                                │  CONTROLS          [v2] │
 │                                │  ──────────────────     │
@@ -128,10 +128,8 @@ Operator actions:
   re-form to any in-range neighbor.
 - **Click map (FOB mode)** — drops a new FOB at the clicked coordinate. Multiple
   FOBs are supported; a default FOB-1 always exists. **[v2]**
-- **Click a relay** — **removes it entirely [v5.6]** (no leftover gray marker —
-  it's filtered from the relay array, and its pad/ring/pulse/signals all go with
-  it; RF buffers and selection are cleared too) and triggers mesh self-heal
-  (rerouted links go muted purple). Works in any placement mode.
+- **Click a relay** — destroys it and triggers mesh self-heal (rerouted links go
+  muted purple). Works in any placement mode.
 - **Launch Swarm** — spawns N hostile drones (size 1–12) from a random edge
   around the primary FOB. Each flies to the **nearest** FOB; relays detect them
   and route threat packets through the mesh; the FOB intercepts on close
@@ -175,9 +173,8 @@ bidirectional link. Latency ≈ `dist * 0.3 + rand*5` ms.
 
 ### Mesh Self-Healing
 
-On removal **[v5.6: filter out entirely rather than marking `destroyed`, so no
-gray dot lingers]**, drop all its links, clear it from neighbor arrays, then
-re-run `formConnections()` on survivors. Connections that did not exist
+On destroy: mark `destroyed`, drop all its links, clear it from neighbor arrays,
+then re-run `formConnections()` on survivors. Connections that did not exist
 before are marked `rerouted` and render muted purple (#5a4a6a).
 
 ### Shortest Path (packet routing) **[v2 — multi-FOB]**
@@ -413,12 +410,6 @@ const INITIAL_VIEW = {
 
 On `style.load`: background and water → `#08090a`; all symbol label text →
 `#2a2b2e` with `#08090a` halo; boundary/admin lines → `#1a1b1e` at 0.3 opacity.
-
-**Mercator projection [v5.7].** The map is pinned to `mercator` (prop +
-`map.setProjection('mercator')`). deck.gl draws the markers in a flat mercator
-viewport; with Mapbox's default globe projection (which kicks in when zoomed
-out) the FOBs/relays/drones would float off the curved globe ("in space").
-Mercator keeps basemap and overlays aligned at every zoom.
 
 **3D terrain [v5].** Adds a `mapbox-dem` raster-dem source and
 `map.setTerrain({ source: 'mapbox-dem', exaggeration: TERRAIN_EXAGGERATION })`

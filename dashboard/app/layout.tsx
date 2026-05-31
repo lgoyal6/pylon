@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'IRON VEIL',
+  title: 'Lattice',
   description: 'Mesh relay simulation dashboard',
 }
 

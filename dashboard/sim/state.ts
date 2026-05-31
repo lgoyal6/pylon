@@ -3,6 +3,7 @@ import type { Relay, Connection } from './mesh'
 import {
   placeRelays,
   formConnections,
+  destroyRelay,
   healMesh,
   distanceKm,
 } from './mesh'
@@ -32,7 +33,6 @@ import {
   INTERCEPT_RADIUS_KM,
   PACKET_DURATION_MS,
   PACKET_TRAIL_MS,
-  FOB_LINK_RANGE_KM,
   GROUND_SLOPE_FACTOR,
   NODE_PAD_HALF_DEG,
   FOB_REACTION_MS,
@@ -245,10 +245,13 @@ function routeToFob(
     ...fobNodes,
     { id: SINK, position: [0, 0] as [number, number], range: 999, status: 'online' as const, connections: [], elevation: 0 },
   ]
+  // A relay can hand the packet to a FOB only if the FOB is within that relay's
+  // own range. If the detecting node can't reach the FOB directly, BFS routes the
+  // packet hop-by-hop through neighboring relays until one is in range of a FOB.
   const fobLinks: Connection[] = []
   onlineRelays.forEach(r =>
     fobs.forEach(f => {
-      if (distanceKm(r.position, f.position) < FOB_LINK_RANGE_KM) {
+      if (distanceKm(r.position, f.position) <= r.range) {
         fobLinks.push({ id: `${r.id}-${f.id}`, from: r.id, to: f.id, status: 'active', latency: 5 })
       }
     })
@@ -543,27 +546,16 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
   destroyRelayById: (id: string) => {
     const state = get()
     const target = state.relays.find(r => r.id === id)
-    if (!target) return
-    // Remove the relay entirely — no leftover marker — clear it from neighbor
-    // connection lists, drop its links, then self-heal the surviving mesh.
-    const relays = state.relays.filter(r => r.id !== id)
-    relays.forEach(r => { r.connections = r.connections.filter(c => c !== id) })
-    const survivingConns = state.connections.filter(c => c.from !== id && c.to !== id)
-    const healed = healMesh(relays, survivingConns)
+    if (!target || target.status === 'destroyed') return
+    const { relays, connections } = destroyRelay(id, state.relays, state.connections)
+    const healed = healMesh(relays, connections)
     const rerouted = healed.filter(c => c.status === 'rerouted').length
-
-    const rfLatest = { ...state.rfLatest }; delete rfLatest[id]
-    const rfSeries = { ...state.rfSeries }; delete rfSeries[id]
-
     set({
       relays,
       connections: healed,
       meshHealth: computeHealth(relays, healed),
-      selectedId: state.selectedId === id ? null : state.selectedId,
-      rfLatest,
-      rfSeries,
       log: pushLog(
-        pushLog(state.log, `${id} REMOVED — mesh degraded`, 'kill'),
+        pushLog(state.log, `${id} DESTROYED — mesh degraded`, 'kill'),
         rerouted ? `MESH self-healing — ${rerouted} paths rerouted` : 'MESH stable — no reroute needed',
         'warn'
       ),

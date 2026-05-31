@@ -8,10 +8,12 @@ const ICON_URL: Record<Drone['kind'], string> = {
   GROUND: '/vehicle.svg',
 }
 
+// Hostiles render red for contrast; shape (chevron / diamond / square) tells the
+// class apart. Slight shade variation keeps them distinguishable.
 const HOSTILE_COLOR: Record<Drone['kind'], [number, number, number, number]> = {
-  AIR: [122, 106, 58, 220],     // amber
-  WATER: [90, 160, 200, 230],   // steel blue
-  GROUND: [176, 160, 80, 230],  // olive
+  AIR: [235, 80, 70, 245],      // bright red
+  WATER: [225, 95, 125, 245],   // red-pink (reads on blue water)
+  GROUND: [205, 65, 55, 245],   // deep red
 }
 
 export function buildDroneLayer(drones: Drone[]) {
@@ -24,12 +26,13 @@ export function buildDroneLayer(drones: Drone[]) {
       width: 64,
       height: 64,
       anchorY: 32,
+      mask: true, // use the SVG as a shape mask so getColor tints it red
     }),
-    getSize: (d: Drone) => (d.kind === 'AIR' ? 24 : 22),
+    getSize: (d: Drone) => (d.kind === 'AIR' ? 26 : 24),
     // Ground/surface icons aren't directional chevrons, so only rotate the UAV.
     getAngle: (d: Drone) => (d.kind === 'AIR' ? -d.heading : 0),
     getColor: (d: Drone) => HOSTILE_COLOR[d.kind],
-    updateTriggers: { getIcon: drones.map(d => d.kind).join() },
+    updateTriggers: { getIcon: drones.map(d => d.kind).join(), getColor: drones.map(d => d.kind).join() },
     pickable: false,
   })
 }
@@ -42,7 +45,7 @@ export function buildDroneTrackLayer(drones: Drone[]) {
     id: 'drone-tracks',
     data,
     getPath: (d: { positions: [number, number][] }) => d.positions,
-    getColor: [122, 106, 58, 80],
+    getColor: [210, 80, 70, 90],
     getWidth: 1,
     widthMinPixels: 1,
     getDashArray: [4, 4],

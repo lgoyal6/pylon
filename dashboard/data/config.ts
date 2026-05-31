@@ -29,8 +29,8 @@ export const SWARM_MAX_SIZE = 12
 export const INTERCEPT_RADIUS_KM = 3
 
 // Packet travel time through the mesh (ms) and trail fade length (ms).
-export const PACKET_DURATION_MS = 700
-export const PACKET_TRAIL_MS = 500
+export const PACKET_DURATION_MS = 320
+export const PACKET_TRAIL_MS = 240
 
 export const FOB_LINK_RANGE_KM = 22
 

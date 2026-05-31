@@ -1,14 +1,14 @@
 'use client'
-import React, { useEffect, useRef, useCallback } from 'react'
-import Map, { useControl } from 'react-map-gl/mapbox'
-import type { MapRef } from 'react-map-gl/mapbox'
-import { MapboxOverlay } from '@deck.gl/mapbox'
+import React, { useEffect, useRef, useCallback, useState } from 'react'
+import DeckGL from '@deck.gl/react'
+import { FlyToInterpolator } from '@deck.gl/core'
+import Map from 'react-map-gl/mapbox'
 import { useSimStore } from '../sim/state'
 import { buildRelayLayer, buildRingLayer, buildSelectionLayer } from '../layers/relays'
 import { buildPadLayer } from '../layers/pads'
 import { buildTransmitLayer } from '../layers/transmit'
-import { buildSignalLayer } from '../layers/signals'
 import { buildArcLayer } from '../layers/arcs'
+import { buildFobLinkLayer } from '../layers/fobLinks'
 import { buildDroneLayer, buildDroneTrackLayer } from '../layers/drone'
 import { buildPacketLayer } from '../layers/packets'
 import { buildFobLayer } from '../layers/intercept'
@@ -24,25 +24,7 @@ const INITIAL_VIEW = {
   zoom: 9,
   pitch: 55,
   bearing: -15,
-}
-
-// deck.gl rendered INTERLEAVED inside Mapbox's GL context. In this mode deck
-// follows the basemap projection — including the 3D globe when zoomed out — so
-// the markers stick to the globe instead of floating in flat-mercator space.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function DeckOverlay(props: { layers: any[]; onClick: (info: any) => void }) {
-  const overlay = useControl(
-    () =>
-      new MapboxOverlay({
-        interleaved: true,
-        layers: props.layers,
-        onClick: props.onClick,
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        getCursor: ({ isHovering }: any) => (isHovering ? 'pointer' : 'crosshair'),
-      })
-  )
-  overlay.setProps({ layers: props.layers, onClick: props.onClick })
-  return null
+  maxPitch: 75,
 }
 
 export default function MapView() {
@@ -60,17 +42,19 @@ export default function MapView() {
   const placeAt = useSimStore(s => s.placeAt)
   const destroyRelayById = useSimStore(s => s.destroyRelayById)
 
-  const mapRef = useRef<MapRef | null>(null)
+  const [viewState, setViewState] = useState<Record<string, unknown>>(INITIAL_VIEW)
 
-  // Fly to a searched location (Mapbox owns the camera now).
+  // Fly to a searched location.
   useEffect(() => {
     if (!flyTarget) return
-    mapRef.current?.getMap()?.flyTo({
-      center: [flyTarget.longitude, flyTarget.latitude],
+    setViewState(vs => ({
+      ...vs,
+      longitude: flyTarget.longitude,
+      latitude: flyTarget.latitude,
       zoom: flyTarget.zoom,
-      duration: 2600,
-      essential: true,
-    })
+      transitionDuration: 2600,
+      transitionInterpolator: new FlyToInterpolator({ speed: 1.6 }),
+    }))
   }, [flyTarget])
 
   const rafRef = useRef<number | null>(null)
@@ -95,7 +79,7 @@ export default function MapView() {
     buildRingLayer(relays),
     buildTransmitLayer(relays, animationTime),
     buildArcLayer(connections, relays),
-    buildSignalLayer(connections, relays, fobs, animationTime),
+    buildFobLinkLayer(relays, fobs),
     buildSelectionLayer(relays, fobs, selectedId),
     buildRelayLayer(relays),
     buildFobLayer(fobs),
@@ -109,12 +93,14 @@ export default function MapView() {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   function handleClick(info: any) {
-    // Clicked an existing relay -> remove it (triggers self-heal)
+    // Clicked an existing relay -> destroy it (triggers self-heal)
     if (info?.object && info.object.id && info.layer?.id === 'relay-nodes') {
-      destroyRelayById(info.object.id)
-      return
+      if (info.object.status !== 'destroyed') {
+        destroyRelayById(info.object.id)
+        return
+      }
     }
-    // Clicked empty map -> place a relay / FOB / hostile depending on mode
+    // Clicked empty map -> place a relay or FOB depending on current mode
     if (info?.coordinate) {
       placeAt([info.coordinate[0], info.coordinate[1]])
     }
@@ -134,6 +120,7 @@ export default function MapView() {
       try {
         const p = map.project([lng, lat])
         const c = map.getContainer()
+        // Off-screen points can't be queried reliably → treat as water (allow).
         if (p.x < 0 || p.y < 0 || p.x > c.clientWidth || p.y > c.clientHeight) return true
         const feats = map.queryRenderedFeatures(p, waterLayers.length ? { layers: waterLayers } : undefined)
         if (!waterLayers.length) {
@@ -151,7 +138,8 @@ export default function MapView() {
       map.setPaintProperty('water', 'fill-color', '#08090a')
     } catch {}
 
-    // 3D terrain.
+    // 3D terrain: add an elevation source and enable terrain so relief shows
+    // under the 45° pitch. A subtle hillshade reads the topology even flatter on.
     try {
       if (!map.getSource('mapbox-dem')) {
         map.addSource('mapbox-dem', {
@@ -162,16 +150,20 @@ export default function MapView() {
         })
       }
       map.setTerrain({ source: 'mapbox-dem', exaggeration: TERRAIN_EXAGGERATION })
+      // Elevation sampler for the sim: nodes follow the surface; ground hostiles
+      // are slowed by slope.
       setElevationFn((lng: number, lat: number) => {
         try {
-          const el = map.queryTerrainElevation([lng, lat], { exaggerated: true })
-          return typeof el === 'number' ? el : 0
+          const e = map.queryTerrainElevation([lng, lat], { exaggerated: true })
+          return typeof e === 'number' ? e : 0
         } catch {
           return 0
         }
       })
+      // Once DEM tiles have loaded, re-sample elevation for existing nodes.
       map.once('idle', () => useSimStore.getState().refreshElevations())
 
+      // Viewport getter so hostiles can spawn within the current on-screen view.
       setViewportFn(() => {
         try {
           const b = map.getBounds()
@@ -197,6 +189,7 @@ export default function MapView() {
 
     const style = map.getStyle()
     if (!style?.layers) return
+    // First symbol layer — insert hillshade below labels so text stays readable.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const firstSymbol = style.layers.find((l: any) => l.type === 'symbol')?.id
     try {
@@ -215,7 +208,9 @@ export default function MapView() {
       }
     } catch {}
 
-    // Topographic contour lines.
+    // Topographic contour lines (elevation isolines) from Mapbox Terrain v2.
+    // Muted amber so it reads as a topo map without breaking the dark theme;
+    // index contours (every 5th) are slightly brighter.
     try {
       if (!map.getSource('mapbox-terrain-v2')) {
         map.addSource('mapbox-terrain-v2', {
@@ -270,17 +265,21 @@ export default function MapView() {
   }
 
   return (
-    <Map
-      ref={mapRef}
-      initialViewState={INITIAL_VIEW}
-      maxPitch={75}
-      mapboxAccessToken={MAPBOX_TOKEN}
-      mapStyle="mapbox://styles/mapbox/dark-v11"
-      projection={{ name: 'globe' }}
-      onLoad={handleMapLoad}
-      style={{ position: 'absolute', width: '100%', height: '100%' }}
+    <DeckGL
+      viewState={viewState}
+      onViewStateChange={(e: { viewState: Record<string, unknown> }) => setViewState(e.viewState)}
+      controller={true}
+      layers={layers}
+      onClick={handleClick}
+      getCursor={({ isHovering }) => (isHovering ? 'pointer' : 'crosshair')}
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      style={{ position: 'absolute', top: '0', left: '0', right: '0', bottom: '0' } as any}
     >
-      <DeckOverlay layers={layers} onClick={handleClick} />
-    </Map>
+      <Map
+        mapboxAccessToken={MAPBOX_TOKEN}
+        mapStyle="mapbox://styles/mapbox/dark-v11"
+        onLoad={handleMapLoad}
+      />
+    </DeckGL>
   )
 }
