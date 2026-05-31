@@ -19,12 +19,18 @@ selectable: `--detector anomaly` (the product) and `--detector energy`
 ## How the anomaly detector works
 - **Signal/features:** each ~10 ms IQ window → Welch PSD (256 bins) → dB →
   subtract the per-window median (spectral *shape*, robust to gain/level drift).
-- **Learn (~30 s, target OFF):** fit a per-frequency-bin baseline (mean/std).
-- **Watch:** flag a window when any bin's power rises far above its learned
-  baseline (max z-score ≥ `Z_THRESHOLD`). Stationary spurs/ambient are baked into
-  the baseline → not flagged; a novel emitter (narrow or wide) spikes a bin →
-  flagged. (IsolationForest was evaluated and rejected — it can't isolate a single
-  anomalous bin among 256 dims.)
+- **Learn (~30 s, target OFF):** fit a per-frequency-bin baseline. Two baselines
+  (`--baseline`): **`zscore`** (mean/std — default, for clean bands like 433 MHz)
+  and **`quantile`** (per-bin 99th-percentile "normal-busy" ceiling — robust to
+  the bursty/intermittent ambient of **2.4 GHz WiFi/BT**, where mean/std flaps).
+- **Watch:** flag a window when any bin pokes far above its learned baseline
+  (z-score ≥ `Z_THRESHOLD`, or quantile excess ≥ `QUANTILE_MARGIN_DB`). Stationary
+  spurs / normal WiFi bursts are baked into the baseline → not flagged; a novel
+  emitter spikes a bin → flagged. (IsolationForest was evaluated and rejected — it
+  can't isolate a single anomalous bin among 256 dims.)
+- **Characterize:** a flagged anomaly is coarsely labeled `comms-like` (narrow /
+  channelized) vs `jamming-like` (wide novel energy) by `classify_emitter` — this
+  fills the event's `classification` field. Behavioral, not a signature match.
 
 ## Contract
 - **Service:** `GET http://<host>:5001/status` →
@@ -70,17 +76,45 @@ python main.py --source live --detector anomaly --freq 433920000 --load-model fo
 # Iteration 1 — energy detector (contrast: misses the narrowband fob):
 python main.py --source live --detector energy --freq 433920000 --gain 49.6
 
-# 2.4 GHz via ADALM-Pluto — anomaly detector at WiFi ch 6 (2.437 GHz default):
-python main.py --source live --sdr pluto --detector anomaly
-#   ...learns the busy 2.4 GHz ambient -> "watching" -> introduce a novel emitter
-python main.py --source live --sdr pluto --freq 2412000000   # tune elsewhere in-band
+# 2.4 GHz via ADALM-Pluto — quantile baseline (WiFi-robust), results onto the mesh:
+python main.py --source live --sdr pluto --freq 2437000000 \
+    --detector anomaly --baseline quantile --learn-seconds 20 --relay 127.0.0.1:5350
+#   learns the busy 2.4 GHz ambient (do it WHILE WiFi is active) -> "watching"
+#   -> on each detection prints "[detect] ... 🚨 DETECTED [..]" AND publishes to the mesh
 
 # Fallback (manual control, no SDR):
 python main.py --source sim
 ```
-Flags: `--source {sim,live}`, `--detector {anomaly,energy}`, `--freq HZ`,
-`--gain {auto,<dB>}`, `--learn-seconds`, `--load-model/--save-model`, `--sample-rate`,
-`--port`, `--publish-interval`. Most also overridable via `DRONE_*` env vars (`config.py`).
+Flags: `--source {sim,live}`, `--sdr {rtl,pluto}`, `--detector {anomaly,energy}`,
+`--baseline {zscore,quantile}`, `--freq HZ`, `--gain {auto,<dB>}`, `--learn-seconds`,
+`--load-model/--save-model`, `--relay HOST:PORT`, `--sample-rate`, `--port`,
+`--publish-interval`. Most also overridable via `DRONE_*` env vars (`config.py`).
+
+## Companion CLIs (live demo)
+- **`receiver.py`** — RTL/Pluto live detection *display* (no service): learns,
+  watches, prints `🚨 SIGNAL DETECTED [comms-like|jamming-like]` with score/SNR/bw.
+  ```bash
+  python receiver.py --sdr pluto --freq 2437000000 --baseline quantile   # 2.4 GHz
+  python receiver.py --freq 433920000                                    # RTL / 433
+  ```
+- **`beacon.py`** — Pluto TX *self-test emitter* (toggle with Enter) to exercise a
+  receiver. Low-power ISM signal into **your own** radio — not a jammer.
+  ```bash
+  python beacon.py --freq 433920000                    # clean tone   -> comms-like
+  python beacon.py --freq 433920000 --waveform sweep   # swept        -> jamming-like
+  python beacon.py --freq 433920000 --waveform barrage --duty 0.4   # sporadic barrage
+  ```
+
+## Mesh integration (relay_system)
+The teammate's mesh is plain-UDP P2P (`relay_system/node.py`), with a sensor
+ingress in `sensor_relay.py`. `--relay HOST:PORT` forwards each detection event
+(UDP unicast) to that ingress, which rebroadcasts it across the mesh as
+`sensor:<json>`. (The old `239.1.1.1` multicast still fires but the mesh is unicast.)
+```bash
+# bridge into the mesh (from relay_system/):
+python3 sensor_relay.py --bootstrap <peer-host:port> --sensor-port 5350
+# then run the service with --relay 127.0.0.1:5350  (ingress port must differ from the mesh data port)
+```
 
 ## Verify
 ```bash
@@ -117,7 +151,9 @@ curl -s -X POST localhost:5001/sim -H 'content-type: application/json' -d '{"det
 
 ## Tests
 ```bash
-python -m pytest    # 35 tests + 1 hardware smoke test (skips without a device)
+python -m pytest    # 71 tests + 1 hardware smoke test (skips without a device)
+# If a mesh node holds UDP 5000, the multicast tests need a free port:
+DRONE_MCAST_PORT=5055 python -m pytest
 ```
 Covers: state (+metrics, thread-safe), publisher (real multicast, metric/stub
 fallback), HTTP status/sim, auto-toggle, both detectors on synthetic IQ (energy

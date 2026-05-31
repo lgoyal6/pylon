@@ -7,6 +7,7 @@ a live stream rather than a single edge.
 """
 import asyncio
 import threading
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -39,6 +40,7 @@ sdr_kind = "rtl"
 #   "anomaly" -> open-world anomaly detector (Iteration 2, the product)
 #   "energy"  -> occupied-bandwidth energy threshold (Iteration 1, contrast/legacy)
 detector_kind = "anomaly"
+baseline_kind = "zscore"  # anomaly baseline: "zscore" or "quantile" (robust for bursty 2.4 GHz)
 learn_seconds = config.LEARN_SECONDS
 load_model_path = None
 save_model_path = None
@@ -58,6 +60,7 @@ class DetectorRunner:
         debounce_on: int = config.DEBOUNCE_ON,
         debounce_off: int = config.DEBOUNCE_OFF,
         window_samples: int = config.WINDOW_SAMPLES,
+        log_edges: bool = False,
     ) -> None:
         self.capture = capture
         self.detector = detector
@@ -67,6 +70,7 @@ class DetectorRunner:
         self.debounce_on = debounce_on  # consecutive detections to flip on (fast)
         self.debounce_off = debounce_off  # consecutive misses to clear (hangover)
         self.window_samples = window_samples
+        self.log_edges = log_edges  # print a line on each detection edge (live service)
         self._on = 0
         self._off = 0
 
@@ -90,11 +94,19 @@ class DetectorRunner:
                 )
                 if rising:
                     self.publisher.send(build_event(self.state.event_snapshot()))
+                    if self.log_edges:
+                        print(f"[detect] {time.strftime('%H:%M:%S')}  🚨 DETECTED "
+                              f"[{result.get('classification')}]  score={result['anomaly_score']:.2f} "
+                              f"snr={result['snr_db']:.1f}dB bw={result['occupied_bw_hz']/1e3:.0f}kHz "
+                              f"@{self.center_freq_hz/1e6:.3f}MHz", flush=True)
         else:
             self._off += 1
             self._on = 0
             if self._off >= self.debounce_off:
+                was_detected = self.state.detected
                 self.state.clear()
+                if was_detected and self.log_edges:
+                    print(f"[detect] {time.strftime('%H:%M:%S')}  ○ cleared", flush=True)
         return result
 
     def run(self, stop_event: threading.Event) -> None:
@@ -157,7 +169,7 @@ def _start_capture_thread():
     else:
         from anomaly import AnomalyDetector
         learn_windows = max(1, int(learn_seconds * sample_rate_hz / config.WINDOW_SAMPLES))
-        detector = AnomalyDetector(sample_rate=sample_rate_hz, learn_windows=learn_windows)
+        detector = AnomalyDetector(sample_rate=sample_rate_hz, learn_windows=learn_windows, baseline=baseline_kind)
         if load_model_path:
             detector.load(load_model_path)
             print(f"[anomaly] loaded baseline from {load_model_path}; watching")
@@ -165,7 +177,7 @@ def _start_capture_thread():
             detector._save_path = save_model_path  # _fit() persists when learning completes
         if not load_model_path:
             print(f"[anomaly] learning ambient for ~{learn_seconds:.0f}s ({learn_windows} windows); keep the target OFF")
-    runner = DetectorRunner(capture, detector, state, publisher, center_freq_hz=center_freq_hz)
+    runner = DetectorRunner(capture, detector, state, publisher, center_freq_hz=center_freq_hz, log_edges=True)
     stop_event = threading.Event()
     thread = threading.Thread(target=runner.run, args=(stop_event,), daemon=True)
     thread.start()

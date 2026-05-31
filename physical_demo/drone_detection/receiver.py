@@ -35,6 +35,8 @@ def main() -> None:
     parser.add_argument("--sample-rate", type=float, default=config.SAMPLE_RATE_HZ, metavar="HZ")
     parser.add_argument("--gain", default=config.GAIN, help="tuner gain in dB, or 'auto'")
     parser.add_argument("--detector", choices=["anomaly", "energy"], default="anomaly")
+    parser.add_argument("--baseline", choices=["zscore", "quantile"], default="zscore",
+                        help="anomaly baseline: zscore (clean bands) or quantile (robust for bursty 2.4 GHz)")
     parser.add_argument("--learn-seconds", type=float, default=8.0, metavar="SECONDS",
                         help="anomaly: ambient-learning duration (keep the beacon OFF)")
     args = parser.parse_args()
@@ -56,7 +58,7 @@ def main() -> None:
         detector = EnergyThresholdDetector(sample_rate=fs)
     else:
         learn_windows = max(1, int(args.learn_seconds * fs / window))
-        detector = AnomalyDetector(sample_rate=fs, learn_windows=learn_windows)
+        detector = AnomalyDetector(sample_rate=fs, learn_windows=learn_windows, baseline=args.baseline)
 
     print(f"Receiver [{args.sdr}]: {args.detector} detector @ {freq/1e6:.3f} MHz, gain={args.gain}")
     if args.detector == "anomaly":

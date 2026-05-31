@@ -89,6 +89,13 @@ Z_THRESHOLD = float(os.environ.get("DRONE_Z_THRESHOLD", "8.0"))  # max per-bin z
 Z_SCORE_SCALE = float(os.environ.get("DRONE_Z_SCORE_SCALE", "20.0"))  # max-z mapped to anomaly_score=1.0
 SIGMA_FLOOR_DB = float(os.environ.get("DRONE_SIGMA_FLOOR_DB", "1.0"))  # floor on per-bin std (dB) to avoid over-sensitivity
 
+# Quantile baseline (robust alternative to mean/std for bursty bands like 2.4 GHz
+# WiFi): learn each bin's high-percentile "normal-busy" ceiling; flag a bin that
+# pokes margin_db above its ceiling. Normal WiFi bursts sit under the ceiling.
+QUANTILE_Q = float(os.environ.get("DRONE_QUANTILE_Q", "0.99"))  # per-bin learned ceiling percentile
+QUANTILE_MARGIN_DB = float(os.environ.get("DRONE_QUANTILE_MARGIN_DB", "4.0"))  # dB above ceiling -> detect
+QUANTILE_SCORE_SCALE_DB = float(os.environ.get("DRONE_QUANTILE_SCORE_SCALE_DB", "12.0"))  # excess mapped to score=1.0
+
 # --- Emitter characterization (jamming-vs-comms) ----------------------------
 # Coarse behavioral label for a flagged anomaly (detector.classify_emitter):
 # wide occupancy -> "jamming-like"; narrow/channelized -> "comms-like". Spectral

@@ -65,6 +65,12 @@ def main() -> None:
         help="anomaly = open-world novelty (Iteration 2, product); energy = occupied-bw threshold (Iteration 1)",
     )
     parser.add_argument(
+        "--baseline",
+        choices=["zscore", "quantile"],
+        default="zscore",
+        help="anomaly baseline: zscore (mean/std, clean bands) or quantile (robust for bursty 2.4 GHz WiFi)",
+    )
+    parser.add_argument(
         "--learn-seconds",
         type=float,
         default=config.LEARN_SECONDS,
@@ -97,6 +103,7 @@ def main() -> None:
     service.sample_rate_hz = int(args.sample_rate)
     service.gain = args.gain
     service.detector_kind = args.detector
+    service.baseline_kind = args.baseline
     service.learn_seconds = args.learn_seconds
     service.load_model_path = args.load_model
     service.save_model_path = args.save_model

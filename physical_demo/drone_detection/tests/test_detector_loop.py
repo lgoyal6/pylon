@@ -128,6 +128,20 @@ def test_runner_publishes_real_metrics_on_rising_edge(multicast_listener):
     assert event["occupied_bw_hz"] >= runner.detector.min_occupied_bw_hz
 
 
+def test_runner_logs_detection_edge_when_log_edges_enabled(capsys):
+    runner = _runner([_noise_plus_signal(s) for s in range(3)], debounce_on=1)
+    runner.log_edges = True
+    runner.step()  # signal -> rising edge -> should print one line
+    out = capsys.readouterr().out
+    assert "DETECT" in out.upper()
+
+
+def test_runner_is_silent_by_default(capsys):
+    runner = _runner([_noise_plus_signal(s) for s in range(3)], debounce_on=1)
+    runner.step()
+    assert capsys.readouterr().out == ""
+
+
 def test_runner_publishes_classification_on_rising_edge(multicast_listener):
     listener = multicast_listener()
     runner = _runner([_noise_plus_signal(s) for s in range(5)], debounce_on=1)

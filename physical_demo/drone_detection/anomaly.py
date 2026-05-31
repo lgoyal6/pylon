@@ -35,6 +35,10 @@ class AnomalyDetector:
         z_score_scale: float = config.Z_SCORE_SCALE,
         sigma_floor_db: float = config.SIGMA_FLOOR_DB,
         occupancy_margin_db: float = config.OCCUPANCY_MARGIN_DB,
+        baseline: str = "zscore",  # "zscore" (mean/std) or "quantile" (robust for bursty bands)
+        quantile: float = config.QUANTILE_Q,
+        quantile_margin_db: float = config.QUANTILE_MARGIN_DB,
+        quantile_score_scale_db: float = config.QUANTILE_SCORE_SCALE_DB,
     ) -> None:
         self.sample_rate = sample_rate
         self.n_bins = n_bins
@@ -43,11 +47,16 @@ class AnomalyDetector:
         self.z_score_scale = z_score_scale
         self.sigma_floor_db = sigma_floor_db
         self.occupancy_margin_db = occupancy_margin_db
+        self.baseline = baseline
+        self.quantile = quantile
+        self.quantile_margin_db = quantile_margin_db
+        self.quantile_score_scale_db = quantile_score_scale_db
 
         self.fitted = False
         self._buffer = []
-        self._mean = None  # per-bin baseline mean (dB shape)
-        self._std = None  # per-bin baseline std (floored)
+        self._mean = None  # per-bin baseline mean (dB shape) — zscore
+        self._std = None  # per-bin baseline std (floored) — zscore
+        self._ceiling = None  # per-bin learned high-percentile ceiling — quantile
         self._save_path = None  # if set, persist the baseline once learned
 
     def _featurize(self, iq: np.ndarray):
@@ -62,24 +71,46 @@ class AnomalyDetector:
 
     def _fit(self) -> None:
         X = np.vstack(self._buffer)
-        self._mean = X.mean(axis=0)
-        self._std = np.maximum(X.std(axis=0), self.sigma_floor_db)
+        if self.baseline == "quantile":
+            self._ceiling = np.quantile(X, self.quantile, axis=0)
+        else:
+            self._mean = X.mean(axis=0)
+            self._std = np.maximum(X.std(axis=0), self.sigma_floor_db)
         self.fitted = True
         self._buffer = []  # free the learn buffer
-        print(f"[anomaly] learn complete ({len(X)} windows); watching")
+        print(f"[anomaly] learn complete ({len(X)} windows, baseline={self.baseline}); watching")
         if self._save_path:
             self.save(self._save_path)
             print(f"[anomaly] baseline saved to {self._save_path}")
 
+    def _score(self, feature: np.ndarray):
+        """(detected, anomaly_score) for a featurized window under the chosen baseline."""
+        if self.baseline == "quantile":
+            # Greatest excess (dB) of any bin above its learned 'normal-busy' ceiling.
+            excess = float(np.max(feature - self._ceiling))
+            score = min(max(excess / self.quantile_score_scale_db, 0.0), 1.0)
+            return bool(excess >= self.quantile_margin_db), score
+        max_z = float(np.max((feature - self._mean) / self._std))
+        score = min(max(max_z / self.z_score_scale, 0.0), 1.0)
+        return bool(max_z >= self.z_threshold), score
+
     def save(self, path: str) -> None:
-        """Persist the learned per-bin baseline (mean/std) so a run can reuse it."""
-        np.savez(path, mean=self._mean, std=self._std)
+        """Persist the learned per-bin baseline so a run can reuse it."""
+        if self.baseline == "quantile":
+            np.savez(path, ceiling=self._ceiling)
+        else:
+            np.savez(path, mean=self._mean, std=self._std)
 
     def load(self, path: str) -> None:
         """Load a saved baseline and go straight to watching (skip learning)."""
         data = np.load(path)
-        self._mean = data["mean"]
-        self._std = data["std"]
+        if "ceiling" in data:
+            self._ceiling = data["ceiling"]
+            self.baseline = "quantile"
+        else:
+            self._mean = data["mean"]
+            self._std = data["std"]
+            self.baseline = "zscore"
         self.fitted = True
 
     def evaluate(self, iq: np.ndarray) -> dict:
@@ -93,11 +124,9 @@ class AnomalyDetector:
                 self._fit()
             return {"detected": False, "anomaly_score": 0.0, "classification": classification, **metrics}
 
-        # Max excess of any bin above its learned baseline, in std units.
-        max_z = float(np.max((feature - self._mean) / self._std))
-        anomaly_score = min(max(max_z / self.z_score_scale, 0.0), 1.0)
+        detected, anomaly_score = self._score(feature)
         return {
-            "detected": bool(max_z >= self.z_threshold),
+            "detected": detected,
             "anomaly_score": float(round(anomaly_score, 3)),
             "classification": classification,
             **metrics,
