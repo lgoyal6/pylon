@@ -1,24 +1,11 @@
-import { LineLayer, ScatterplotLayer } from '@deck.gl/layers'
-import type { InterceptLine, Fob } from '../sim/state'
-
-export function buildInterceptLayer(lines: InterceptLine[]) {
-  return new LineLayer({
-    id: 'intercept-lines',
-    data: lines,
-    getSourcePosition: (d: InterceptLine) => d.from,
-    getTargetPosition: (d: InterceptLine) => d.to,
-    getColor: [122, 58, 58, 200],
-    getWidth: 2,
-    widthMinPixels: 1,
-    pickable: false,
-  })
-}
+import { ScatterplotLayer } from '@deck.gl/layers'
+import type { Fob } from '../sim/state'
 
 export function buildFobLayer(fobs: Fob[]) {
   return new ScatterplotLayer({
     id: 'fobs',
     data: fobs,
-    getPosition: (d: Fob) => d.position,
+    getPosition: (d: Fob): [number, number, number] => [d.position[0], d.position[1], d.elevation ?? 0],
     getRadius: 1000,
     getFillColor: [154, 155, 158, 200],
     radiusMinPixels: 6,

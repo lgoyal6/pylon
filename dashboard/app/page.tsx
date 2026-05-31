@@ -8,6 +8,7 @@ import MeshStatus from '../components/MeshStatus'
 import BottomDock from '../components/BottomDock'
 import Legend from '../components/Legend'
 import SelectionPanel from '../components/SelectionPanel'
+import SearchBox from '../components/SearchBox'
 
 const MapView = dynamic(() => import('../components/Map'), { ssr: false })
 
@@ -37,6 +38,7 @@ export default function Home() {
         >
           <MapView />
           <Legend />
+          <SearchBox />
           <SelectionPanel />
         </div>
 

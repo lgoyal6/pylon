@@ -6,7 +6,7 @@ export function buildRelayLayer(relays: Relay[]) {
   return new ScatterplotLayer({
     id: 'relay-nodes',
     data: relays.filter(r => r.status !== 'offline'),
-    getPosition: (d: Relay) => d.position,
+    getPosition: (d: Relay): [number, number, number] => [d.position[0], d.position[1], d.elevation ?? 0],
     getRadius: 600,
     getFillColor: (d: Relay): [number, number, number, number] => {
       if (d.status === 'destroyed') return [58, 58, 58, 120]
@@ -25,7 +25,7 @@ export function buildRingLayer(relays: Relay[]) {
   return new ScatterplotLayer({
     id: 'detection-rings',
     data: relays.filter(r => r.status === 'online'),
-    getPosition: (d: Relay) => d.position,
+    getPosition: (d: Relay): [number, number, number] => [d.position[0], d.position[1], d.elevation ?? 0],
     getRadius: (d: Relay) => d.range * 1000,
     getFillColor: [0, 0, 0, 0],
     getLineColor: (d: Relay): [number, number, number, number] =>
@@ -48,10 +48,11 @@ export function buildSelectionLayer(
   const fob = fobs.find(f => f.id === selectedId)
   const pos = relay?.position ?? fob?.position
   if (!pos) return new ScatterplotLayer({ id: 'selection', data: [] })
+  const elevation = relay?.elevation ?? fob?.elevation ?? 0
   return new ScatterplotLayer({
     id: 'selection',
     data: [{ position: pos }],
-    getPosition: (d: { position: [number, number] }) => d.position,
+    getPosition: (): [number, number, number] => [pos[0], pos[1], elevation],
     getRadius: 1600,
     getFillColor: [0, 0, 0, 0],
     getLineColor: [154, 155, 158, 230],

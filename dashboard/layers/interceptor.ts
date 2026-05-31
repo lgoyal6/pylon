@@ -8,10 +8,10 @@ export function buildInterceptorLayer(interceptors: Interceptor[]) {
     id: 'interceptors',
     data: interceptors.filter(x => x.alive),
     getPosition: (d: Interceptor) => d.position,
-    getRadius: 300,
-    getFillColor: [180, 90, 90, 230],
-    radiusMinPixels: 2.5,
-    radiusMaxPixels: 5,
+    getRadius: 450,
+    getFillColor: [235, 130, 90, 255],
+    radiusMinPixels: 3.5,
+    radiusMaxPixels: 7,
     pickable: false,
   })
 }
@@ -22,9 +22,9 @@ export function buildInterceptorTrailLayer(interceptors: Interceptor[]) {
     id: 'interceptor-trails',
     data,
     getPath: (d: { positions: [number, number][] }) => d.positions,
-    getColor: [150, 70, 70, 150],
-    getWidth: 1.5,
-    widthMinPixels: 1,
+    getColor: [220, 110, 80, 200],
+    getWidth: 2.5,
+    widthMinPixels: 1.5,
     pickable: false,
   })
 }

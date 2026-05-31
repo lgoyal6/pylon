@@ -2,20 +2,34 @@ import { IconLayer, PathLayer } from '@deck.gl/layers'
 import { PathStyleExtension } from '@deck.gl/extensions'
 import type { Drone } from '../sim/state'
 
+const ICON_URL: Record<Drone['kind'], string> = {
+  AIR: '/drone.svg',
+  WATER: '/vessel.svg',
+  GROUND: '/vehicle.svg',
+}
+
+const HOSTILE_COLOR: Record<Drone['kind'], [number, number, number, number]> = {
+  AIR: [122, 106, 58, 220],     // amber
+  WATER: [90, 160, 200, 230],   // steel blue
+  GROUND: [176, 160, 80, 230],  // olive
+}
+
 export function buildDroneLayer(drones: Drone[]) {
   return new IconLayer({
     id: 'drones',
     data: drones.filter(d => d.alive),
     getPosition: (d: Drone) => d.position,
-    getIcon: () => ({
-      url: '/drone.svg',
+    getIcon: (d: Drone) => ({
+      url: ICON_URL[d.kind],
       width: 64,
       height: 64,
       anchorY: 32,
     }),
-    getSize: 24,
-    getAngle: (d: Drone) => -d.heading,
-    getColor: [122, 106, 58, 220],
+    getSize: (d: Drone) => (d.kind === 'AIR' ? 24 : 22),
+    // Ground/surface icons aren't directional chevrons, so only rotate the UAV.
+    getAngle: (d: Drone) => (d.kind === 'AIR' ? -d.heading : 0),
+    getColor: (d: Drone) => HOSTILE_COLOR[d.kind],
+    updateTriggers: { getIcon: drones.map(d => d.kind).join() },
     pickable: false,
   })
 }
