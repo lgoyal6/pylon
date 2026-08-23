@@ -1,16 +1,16 @@
-# Demo Runbook — drone @ 8am, deadline 11am
+# Demo Runbook - drone @ 8am, deadline 11am
 
-Target: **Sharper Image 2.4 GHz RC Glow-Up Stunt Drone** — controller-based, nRF24/
+Target: **Sharper Image 2.4 GHz RC Glow-Up Stunt Drone** - controller-based, nRF24/
 Beken **GFSK frequency-hopper** (not WiFi/BT). **Band 2404–2476 MHz, center 2440**,
 ~1 Mbps. Detection is by *structure* (narrowband GFSK hops), not frequency.
 
 The plan: **anomaly detector is the no-training safety net** (learn off → fly on →
-flag). **Classifier is the upgrade** (retrain on real drone data — seconds to train,
+flag). **Classifier is the upgrade** (retrain on real drone data - seconds to train,
 minutes to collect). Don't debug the pipeline at 8am; rehearse tonight.
 
 ---
 
-## TONIGHT (de-risk — do these before sleep)
+## TONIGHT (de-risk - do these before sleep)
 
 1. **Hardware check:** Pluto on USB, antenna on RX, libiio OK:
    ```
@@ -37,35 +37,35 @@ minutes to collect). Don't debug the pipeline at 8am; rehearse tonight.
 
 ## TOMORROW 8:00–11:00
 
-- **8:00 — see it.** Power the drone + controller; confirm capture:
+- **8:00 - see it.** Power the drone + controller; confirm capture:
   ```
   python receiver.py --sdr pluto --freq 2440000000 --sample-rate 10000000
   ```
   Fly it CLOSE, antenna pointed at the **controller**. If nothing, try `--freq 2420000000` / `2460000000`.
-- **8:10 — anomaly detector (BANK A WORKING DEMO):**
+- **8:10 - anomaly detector (BANK A WORKING DEMO):**
   ```
   python main.py --source live --sdr pluto --freq 2440000000 --sample-rate 10000000 \
       --detector anomaly --baseline quantile --learn-seconds 20 --relay 127.0.0.1:5350
   ```
   Learn with controller OFF → fly ON → `[detect] DETECTED` + mesh. *This is your guaranteed demo.*
-- **8:30 — collect real drone data:**
+- **8:30 - collect real drone data:**
   ```
   python collect.py --label drone --sdr pluto --freq 2440000000 --sample-rate 10000000 --stacks 200
   ```
   (fly it, close). Reuse last night's `background`/`wifi`.
-- **8:45 — retrain (seconds):**
+- **8:45 - retrain (seconds):**
   ```
   python train.py --dataset dataset.npz --out model.joblib
   ```
   Read held-out accuracy + confusion. Drone separates from ambient? Good.
-- **9:00 — classifier live:**
+- **9:00 - classifier live:**
   ```
   python main.py --source live --sdr pluto --freq 2440000000 --sample-rate 10000000 \
       --detector classifier --classify-model model.joblib --relay 127.0.0.1:5350
   ```
   Validate it flags `drone` when flying, quiet otherwise.
-- **9:30 — iterate** (collect more / retune margin) if needed.
-- **10:00 — FREEZE. Dry-run the actual demo.** Leave a 1-hour buffer.
+- **9:30 - iterate** (collect more / retune margin) if needed.
+- **10:00 - FREEZE. Dry-run the actual demo.** Leave a 1-hour buffer.
 
 ---
 

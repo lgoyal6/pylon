@@ -1,4 +1,4 @@
-# design.md — Pylon
+# design.md - Pylon
 
 > Living design doc. Kept in sync with the implementation. Sections marked
 > **[v2]** changed when the dashboard became an interactive live sandbox
@@ -7,7 +7,7 @@
 > inter-node signal traffic.
 > **[v4]** Foundry-style console: RF telemetry ingestion (simulated + live
 > WebSocket), bottom signal dock, right Selection/Properties panel, left legend,
-> tracking interceptors. **Asset types were removed — every node is just a relay
+> tracking interceptors. **Asset types were removed - every node is just a relay
 > with links** (plus COMMAND/FOB).
 
 ## Visual Rules
@@ -59,12 +59,12 @@ Borders are 1px solid #1a1b1e. Never thicker. Never brighter.
 
 No shadows, no glows, no gradients, no blur effects.
 
-**[v2] Motion exception — signal transmission.** The original rule forbade
+**[v2] Motion exception - signal transmission.** The original rule forbade
 "pulsing dots." That is relaxed to show that nodes are actively transmitting.
 Two ambient animations are permitted, both dim, neither a glow:
-- **Transmit pulse [v2]** — online relays emit an expanding "ping" ring (1px
+- **Transmit pulse [v2]** - online relays emit an expanding "ping" ring (1px
   stroked, fades alpha ~45→0 from node to range). Shows a node is live.
-- **Inter-node signals [v3]** — small muted dots slide along every active mesh
+- **Inter-node signals [v3]** - small muted dots slide along every active mesh
   link, showing nodes transmitting *to each other*. Muted green
   (#5a96... ~[90,150,110]), muted purple on rerouted links.
 
@@ -72,7 +72,7 @@ No other pulsing, blinking, or decorative motion is allowed.
 
 **[v4] Node colors.** All relays share one muted steel fill [74,106,122]; amber
 [122,106,58] when on alert; gray [58,58,58] when destroyed. COMMAND/FOB is the
-brightest element [154,155,158]. (Asset types from v3 were removed — nodes are
+brightest element [154,155,158]. (Asset types from v3 were removed - nodes are
 relays, not decorative unit types.)
 
 ---
@@ -113,7 +113,7 @@ No decorative elements beyond the transmit pulse and the activity waveform.
 
 ---
 
-## Simulation Model **[v2 — replaces the scripted phase machine]**
+## Simulation Model **[v2 - replaces the scripted phase machine]**
 
 The sim is a **free-running interactive sandbox**, not a scripted scene. Nothing
 auto-plays a storyline; the operator drives it. A single
@@ -122,19 +122,19 @@ auto-plays a storyline; the operator drives it. A single
 
 Operator actions:
 
-- **Deploy Ring** — places a preset staggered ring of relays around the primary
+- **Deploy Ring** - places a preset staggered ring of relays around the primary
   FOB; mesh links auto-form.
-- **Click map (Relay mode)** — drops one relay at the clicked coordinate; links
+- **Click map (Relay mode)** - drops one relay at the clicked coordinate; links
   re-form to any in-range neighbor.
-- **Click map (FOB mode)** — drops a new FOB at the clicked coordinate. Multiple
+- **Click map (FOB mode)** - drops a new FOB at the clicked coordinate. Multiple
   FOBs are supported; a default FOB-1 always exists. **[v2]**
-- **Click a relay** — destroys it and triggers mesh self-heal (rerouted links go
+- **Click a relay** - destroys it and triggers mesh self-heal (rerouted links go
   muted purple). Works in any placement mode.
-- **Launch Swarm** — spawns N hostile drones (size 1–12) from a random edge
+- **Launch Swarm** - spawns N hostile drones (size 1–12) from a random edge
   around the primary FOB. Each flies to the **nearest** FOB; relays detect them
   and route threat packets through the mesh; the FOB intercepts on close
   approach.
-- **Transport** — play/pause, speed 0.5–4×, Clear/reset.
+- **Transport** - play/pause, speed 0.5–4×, Clear/reset.
 
 State is continuous: detection, packet propagation, interception, and self-heal
 all happen live and concurrently for any number of drones.
@@ -161,7 +161,7 @@ interface Relay {
 ```
 
 Ring placement uses polar coordinates with jitter around a center (the primary
-FOB). Config **[v5.2 — ranges reduced]**: `RELAY_MIN_RADIUS_KM = 11`,
+FOB). Config **[v5.2 - ranges reduced]**: `RELAY_MIN_RADIUS_KM = 11`,
 `RELAY_MAX_RADIUS_KM = 17`, relay `range = RELAY_RANGE_MIN_KM(9) +
 rand*RELAY_RANGE_SPREAD_KM(5)` km, `FOB_LINK_RANGE_KM = 22`. Tuned so the ring
 stays connected at the smaller scale (~10 links for a 10-node ring).
@@ -177,7 +177,7 @@ On destroy: mark `destroyed`, drop all its links, clear it from neighbor arrays,
 then re-run `formConnections()` on survivors. Connections that did not exist
 before are marked `rerouted` and render muted purple (#5a4a6a).
 
-### Shortest Path (packet routing) **[v2 — multi-FOB]**
+### Shortest Path (packet routing) **[v2 - multi-FOB]**
 
 BFS from the detecting relay to the **nearest reachable FOB**. A virtual SINK
 node is connected to every FOB so one BFS finds the closest; the SINK is then
@@ -186,12 +186,12 @@ stripped, leaving `relay → … → FOB` waypoints. Relays within
 
 ---
 
-## Nodes & Roster **[v4 — types removed]**
+## Nodes & Roster **[v4 - types removed]**
 
 Every deployed node is a **relay** (mesh node with links). FOBs are COMMAND
 nodes; drones are HOSTILE. There are no relay sub-types. **Roster dropdown**
 (`AssetRoster.tsx`): collapsed header `ASSETS · N`, expands to filter chips
-(All / Relay / FOB / Hostile) and a scrollable list — each row id · kind ·
+(All / Relay / FOB / Hostile) and a scrollable list - each row id · kind ·
 status · `links · latency · range` (distance-to-FOB for drones). Clicking a row
 sets `selectedId`, which draws a bright highlight ring on the map
 (`buildSelectionLayer`) and opens the Selection panel. Click again to deselect.
@@ -201,9 +201,9 @@ sets `selectedId`, which draws a bright highlight ring on the map
 The dashboard ingests RF signal telemetry through one stream. `sim/rf.ts`
 defines `RFSample { nodeId, t, rssiDbm, snrDb, freqMhz }` and two sources behind
 an `RFSource` interface:
-- **SimulatedRFSource** (default) — synthesizes plausible per-relay samples;
+- **SimulatedRFSource** (default) - synthesizes plausible per-relay samples;
   rssi tracks link count, degrades on alert.
-- **WebSocketRFSource** — connects to a real receiver/SDR bridge; same
+- **WebSocketRFSource** - connects to a real receiver/SDR bridge; same
   `ingestRf` entry point feeds every consumer. Point it at a `ws://…` URL via
   the bottom dock's **Connect Live** control.
 
@@ -222,17 +222,17 @@ matches the look of a captured gated-carrier signal rather than a smooth line.
 ## Tracking Interceptor **[v4 / v5.4]**
 
 When a pylon detects a drone, threat data routes to the nearest FOB. Once it
-lands (+ `FOB_REACTION_MS`), the FOB **launches a tracking interceptor** — a fast
+lands (+ `FOB_REACTION_MS`), the FOB **launches a tracking interceptor** - a fast
 munition (`INTERCEPTOR_SPEED_SCALE = 2.8× drone speed`) that flies from the FOB
 and chases the drone's live position, detonating within `INTERCEPTOR_IMPACT_KM`.
 Rendered as a bright orange dot + trail (`layers/interceptor.ts`); on impact an
-**expanding red burst ring** plays (`layers/burst.ts`, `Burst` in the store) —
+**expanding red burst ring** plays (`layers/burst.ts`, `Burst` in the store)  - 
 there are no straight intercept lines. A point-blank kill at the small
 `INTERCEPT_RADIUS_KM (3)` perimeter remains only as a fail-safe.
 
 **[v5.4] Engagement timing.** With the reduced relay ranges, packet travel
 (`PACKET_DURATION_MS`) and reaction (`FOB_REACTION_MS`) were shortened so the
-interceptor launches and reaches the drone *before* it hits the perimeter — the
+interceptor launches and reaches the drone *before* it hits the perimeter - the
 projectile makes the kill, not the fail-safe.
 
 ## Location Search **[v5.4]**
@@ -269,7 +269,7 @@ interface Fob { id: string; position: [number, number] }
 
 ---
 
-## Hostiles & Swarms **[v4.2 — typed hostiles]**
+## Hostiles & Swarms **[v4.2 - typed hostiles]**
 
 ```ts
 type HostileType = 'AIR' | 'WATER' | 'GROUND'
@@ -301,7 +301,7 @@ tester and an elevation sampler, both registered by the Map (water via
 `queryTerrainElevation`; off-screen/unknown → allow / 0).
 - **WATER** hostiles can only be *placed* on water and only move over water.
 - **GROUND** hostiles can only be *placed* on land and only move over land, and
-  are **slowed by slope** — each step samples elevation at current vs. next
+  are **slowed by slope** - each step samples elevation at current vs. next
   position and scales speed by `1/(1 + GROUND_SLOPE_FACTOR·slope)`, so climbing
   steep terrain is slow.
 - Both deflect (±40/75/110/150°) to follow the shoreline when blocked, else hold.
@@ -317,11 +317,11 @@ of floating at sea level. `refreshElevations()` re-samples once DEM tiles load
 **Slanted pads [v5.3].** Each relay/FOB also stores a `pad`: a small square
 footprint (`NODE_PAD_HALF_DEG ≈ 0.9km`) whose four corners sample terrain
 elevation (`computePad`). `layers/pads.ts` draws these as a `PolygonLayer` with
-3D vertices, so the pad **tilts to match the slope** the node sits on — relays on
+3D vertices, so the pad **tilts to match the slope** the node sits on - relays on
 a hillside visibly slant. Filled translucent + stroked edge, colored by kind
 (relay steel / FOB gray / amber on alert). Recomputed in `refreshElevations`.
 
-Each frame every live hostile steers toward its **nearest FOB** — placing a new,
+Each frame every live hostile steers toward its **nearest FOB** - placing a new,
 closer FOB **reroutes live hostiles** to it (logged `REROUTING → FOB-x`), tracked
 via `targetFobId`. On first entering a relay's range it is detected (relay goes
 amber, a **white** threat packet routes to the nearest FOB). The FOB then
@@ -336,29 +336,29 @@ Render order (bottom → top): detection rings, transmit pulses, mesh arcs,
 inter-node signals, selection ring, relay nodes, FOBs, drone tracks, drones,
 **interceptor trails + interceptors [v4]**, data packets, intercept flashes.
 
-### Relay Nodes — ScatterplotLayer
+### Relay Nodes - ScatterplotLayer
 `getFillColor` by **asset type [v3]** when online (amber `[122,106,58,220]` when
 `alert`), booting dim, destroyed `[58,58,58,120]`. `pickable: true` so map
 clicks can destroy a relay. Color/radius transitions 500/300 ms.
 
-### Inter-node Signals — ScatterplotLayer **[v3 — new]**
+### Inter-node Signals - ScatterplotLayer **[v3 - new]**
 Two muted dots per active link slide from `from`→`to`, position =
 `lerp(a, b, ((animationTime/1600)+offset+phase)%1)`, offset hashed from the
 connection id. Green `[90,150,110,180]` for normal mesh traffic, purple
 `[120,100,140,180]` on rerouted links, and **white `[230,232,236]` when either
-endpoint relay is on alert** — a link carrying threat-detection data transmits
+endpoint relay is on alert** - a link carrying threat-detection data transmits
 white, not green **[v4.2]**. Detection packets (TripsLayer) are likewise white.
 `radiusMinPixels: 1.5`. Computed each frame; nothing stored in the sim.
 
-### Selection Ring — ScatterplotLayer (stroked) **[v3 — new]**
+### Selection Ring - ScatterplotLayer (stroked) **[v3 - new]**
 Single bright stroked ring `[154,155,158,230]` around `selectedId` (relay or
 FOB). Empty layer when nothing selected.
 
-### Detection Rings — ScatterplotLayer (stroked)
+### Detection Rings - ScatterplotLayer (stroked)
 Per online relay, radius = `range * 1000` m. Line color amber when alert, else
 barely-visible steel `[74,106,122,25]`. Transparent fill.
 
-### Transmit Pulses — ScatterplotLayer (stroked) **[v2 — new]**
+### Transmit Pulses - ScatterplotLayer (stroked) **[v2 - new]**
 Per online relay, an expanding ring showing active transmission. Phase =
 `((animationTime / TRANSMIT_PERIOD_MS) + perNodeOffset) % 1`; radius =
 `phase * range * 1000` m; line alpha = `(1 - phase) * 45` (×70 when alert).
@@ -366,33 +366,33 @@ Per online relay, an expanding ring showing active transmission. Phase =
 `updateTriggers` keyed on `animationTime`. Color steel `#4a6a7a` (amber when
 alert). `TRANSMIT_PERIOD_MS = 2400`.
 
-### Mesh Connections — ArcLayer
+### Mesh Connections - ArcLayer
 Source/target colors muted teal `[58,90,74,160]`, or muted purple
-`[90,74,106,160]` when `rerouted`. `getHeight: 0.35` **[v4.1 — lowered from 1.0;
+`[90,74,106,160]` when `rerouted`. `getHeight: 0.35` **[v4.1 - lowered from 1.0;
 the tall arcs were too much]**; `greatCircle: false`; `widthMinPixels: 1.5`,
 `widthMaxPixels: 3`.
 
-### Data Packets — TripsLayer
+### Data Packets - TripsLayer
 Per packet: `path` waypoints + absolute `timestamps`. `currentTime =
 animationTime`; `trailLength = PACKET_TRAIL_MS (600)`. Color muted green
 `[74,122,90,220]`. Multiple concurrent packets supported (each carries its own
 start/end time). `PACKET_DURATION_MS = 2500`.
 
-### Drone — IconLayer **[v4.2 — per-kind icon/color]**
+### Drone - IconLayer **[v4.2 - per-kind icon/color]**
 Data is the live-hostile array. Icon + color by `kind`: AIR `/drone.svg` amber
 (rotated by heading), WATER `/vessel.svg` steel-blue, GROUND `/vehicle.svg`
 olive (ground/surface icons aren't rotated).
 
-### Drone Track — PathLayer
+### Drone Track - PathLayer
 One dashed faint-amber path per drone (`PathStyleExtension({ dash: true })`),
 track capped at 60 points.
 
-### Intercept Lines — LineLayer
+### Intercept Lines - LineLayer
 Data is the active intercept-line array (FOB → drone), muted red
 `[122,58,58,200]`, expire ~700 ms after firing.
 
-### FOB — ScatterplotLayer
-Data is the FOB array. Fill `[154,155,158,200]` — brightest element.
+### FOB - ScatterplotLayer
+Data is the FOB array. Fill `[154,155,158,200]` - brightest element.
 
 ---
 
