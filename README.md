@@ -90,10 +90,10 @@ cd physical_demo/drone_detection
 brew install librtlsdr
 pip install -r requirements.txt
 
-# RTL — 433 MHz key fob, ~30 s learn (fob OFF), then press it
+# RTL - 433 MHz key fob, ~30 s learn (fob OFF), then press it
 python main.py --source live --detector anomaly --freq 433920000 --gain 49.6
 
-# Pluto — 2.4 GHz WiFi/BT ambient + novel emitter
+# Pluto - 2.4 GHz WiFi/BT ambient + novel emitter
 python main.py --source live --sdr pluto --detector anomaly
 
 # No SDR? Manual fallback:
