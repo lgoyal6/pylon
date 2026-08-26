@@ -1,6 +1,6 @@
 """PlutoCapture unit tests.
 
-A fake SDR is injected so these run without libiio or a Pluto attached — they
+A fake SDR is injected so these run without libiio or a Pluto attached - they
 exercise the tuning/normalization/buffer logic, not the hardware. The live path
 builds adi.Pluto itself (lazy import), covered separately by a hardware smoke test.
 """

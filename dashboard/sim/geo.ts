@@ -1,8 +1,8 @@
 // Land/water test, backed by the Mapbox basemap's `water` layer.
 //
 // The sim (zustand store) has no map instance, so the Map component registers a
-// tester on load via setWaterTest. Until then — or for points outside the
-// rendered viewport — isWater returns true (unknown → allow movement), so the
+// tester on load via setWaterTest. Until then - or for points outside the
+// rendered viewport - isWater returns true (unknown → allow movement), so the
 // constraint only ever *restricts* vessels where we can actually confirm land.
 
 type WaterTest = (lng: number, lat: number) => boolean

@@ -4,11 +4,11 @@ Computes a smoothed power spectrum (Welch) for an IQ window, measures how much
 bandwidth sits above the noise floor, and detects when a real emitter occupies
 >= `min_occupied_bw_hz`. Peak SNR alone is NOT the decision: on RTL-SDR the
 peak-over-median is ~the same for a strong station and empty spectrum (spurs,
-band shape), so it can't discriminate. Occupied bandwidth can — and it rejects
+band shape), so it can't discriminate. Occupied bandwidth can - and it rejects
 single-bin spurs and the DC spike (welch detrends DC) for free. snr_db is still
 reported as a metric.
 
-This is just a power meter — the open-world anomaly model (Iteration 2) replaces
+This is just a power meter - the open-world anomaly model (Iteration 2) replaces
 `evaluate()` behind the same `DetectionState` seam, so its output dict mirrors
 the detection-event metrics.
 """
@@ -52,7 +52,7 @@ def classify_emitter(
     is deliberately NOT the gate: a clean swept jammer (chirp) is wideband yet
     spectrally peaked, so a flatness gate would misread it as comms. Telling a
     swept jammer from a genuinely wideband comms signal needs temporal features
-    (moving-peak tracking) — future work."""
+    (moving-peak tracking) - future work."""
     bw_frac = occupied_bw_hz / sample_rate if sample_rate else 0.0
     if bw_frac >= jamming_bw_frac:
         return "jamming-like"

@@ -1,9 +1,9 @@
-"""Emitter CLI — transmit a benign low-power test signal from the ADALM-Pluto.
+"""Emitter CLI - transmit a benign low-power test signal from the ADALM-Pluto.
 
 Purpose: a *controllable unknown emitter* for testing your OWN receiver (the RTL
 running receiver.py at, e.g., 433.92 MHz ISM). You press Enter to toggle the
 signal on/off; it should then appear on the receiver terminal. This is a
-self-test beacon — low power, ISM band, into your own radio. It is NOT a jammer
+self-test beacon - low power, ISM band, into your own radio. It is NOT a jammer
 and is not aimed at disrupting any device.
 
 Run (Pluto on USB, libiio installed):
@@ -47,7 +47,7 @@ def rx_dbm_to_atten(rx_dbm: float, freq_hz: float, distance_m: float = 1.0,
 
 
 def tone(n: int, sample_rate: float, offset_hz: float, amplitude: float = 0.5) -> np.ndarray:
-    """A single complex tone at `offset_hz` from center — a clean narrowband
+    """A single complex tone at `offset_hz` from center - a clean narrowband
     'novel emitter' the anomaly detector flags as energy in one bin."""
     t = np.arange(n) / sample_rate
     return (amplitude * np.exp(2j * np.pi * offset_hz * t)).astype(np.complex64)
@@ -55,7 +55,7 @@ def tone(n: int, sample_rate: float, offset_hz: float, amplitude: float = 0.5) -
 
 def band_limited_noise(n: int, sample_rate: float, bw_hz: float, seed: int = 0,
                        amplitude: float = 0.5) -> np.ndarray:
-    """Noise confined to ±bw_hz/2 around center — a wideband emitter that the
+    """Noise confined to ±bw_hz/2 around center - a wideband emitter that the
     energy (occupied-bandwidth) detector also catches."""
     rng = np.random.default_rng(seed)
     x = rng.standard_normal(n) + 1j * rng.standard_normal(n)
@@ -68,7 +68,7 @@ def band_limited_noise(n: int, sample_rate: float, bw_hz: float, seed: int = 0,
 
 
 def chirp(n: int, sample_rate: float, bw_hz: float, amplitude: float = 0.5) -> np.ndarray:
-    """A linear frequency sweep across ±bw_hz/2 — the classic *swept-jammer*
+    """A linear frequency sweep across ±bw_hz/2 - the classic *swept-jammer*
     signature: instantaneously narrow, but smears across the band over the window.
     Used as a detector test signal (the receiver should flag + classify it as
     jamming-like), not to disrupt anything."""
@@ -82,7 +82,7 @@ def chirp(n: int, sample_rate: float, bw_hz: float, amplitude: float = 0.5) -> n
 
 def gfsk_hopper(n: int, sample_rate: float, bit_rate: float = 1_000_000, n_channels: int = 5,
                amplitude: float = 0.5, seed: int = 0) -> np.ndarray:
-    """GFSK bursts hopping across a few narrowband channels — a *feature-faithful*
+    """GFSK bursts hopping across a few narrowband channels - a *feature-faithful*
     'RC-link-like' emitter (GFSK frequency-hopping), like a toy drone's nRF24/Beken
     link or Bluetooth. `bit_rate` sets the symbol rate (and ~the per-channel
     bandwidth); nRF24 toys are typically 1 Mbps or 250 kbps. A controllable
@@ -114,7 +114,7 @@ def gfsk_hopper(n: int, sample_rate: float, bit_rate: float = 1_000_000, n_chann
 
 def apply_duty(waveform: np.ndarray, duty: float) -> np.ndarray:
     """Gate a waveform on for the first `duty` fraction of the buffer and off for
-    the rest — gives a sporadic/pulsed character when looped (duty=1.0 = continuous)."""
+    the rest - gives a sporadic/pulsed character when looped (duty=1.0 = continuous)."""
     if duty >= 1.0:
         return waveform
     on = int(len(waveform) * max(duty, 0.0))
@@ -216,7 +216,7 @@ def main() -> None:
     beacon = PlutoBeacon(int(args.freq), int(args.sample_rate), tx_atten_db=tx_atten)
     waveform = _build_waveform(args)
     print(f"Beacon ready: {args.waveform} @ {args.freq/1e6:.3f} MHz, {power_note}.  "
-          f"(ISM self-test signal — not a jammer.)")
+          f"(ISM self-test signal - not a jammer.)")
     print("Press Enter to TRANSMIT / stop.  Type q + Enter to quit.")
     transmitting = False
     try:
@@ -227,10 +227,10 @@ def main() -> None:
             transmitting = not transmitting
             if transmitting:
                 beacon.start(waveform)
-                print("  ● TRANSMITTING — Enter to stop, q to quit")
+                print("  ● TRANSMITTING - Enter to stop, q to quit")
             else:
                 beacon.stop()
-                print("  ○ idle — Enter to transmit, q to quit")
+                print("  ○ idle - Enter to transmit, q to quit")
     except (KeyboardInterrupt, EOFError):
         pass
     finally:

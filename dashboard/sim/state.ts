@@ -115,7 +115,7 @@ export type TourStep =
   | 'detected'     // popup: drone has entered detection range
   | 'routing'      // signal hops through mesh, FOB launches interceptor
   | 'neutralized'  // popup: drone neutralized
-  | 'done'         // tour finished — normal sandbox mode
+  | 'done'         // tour finished - normal sandbox mode
 
 export interface TourState {
   active: boolean
@@ -357,7 +357,7 @@ const initialState: SandboxState = {
   flyTarget: null,
   log: [],
   meshHealth: EMPTY_HEALTH,
-  // Sim is paused on first paint — the tour resumes it during action steps.
+  // Sim is paused on first paint - the tour resumes it during action steps.
   playing: false,
   speed: 1,
   swarmSize: SWARM_DEFAULT_SIZE,
@@ -457,7 +457,7 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
     })
   },
 
-  // Single entry point for all RF telemetry — simulated or live. Updates the
+  // Single entry point for all RF telemetry - simulated or live. Updates the
   // per-node ring buffer + latest sample. Aggregate is recomputed in tick.
   ingestRf: (sample: RFSample) => {
     const state = get()
@@ -476,7 +476,7 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
       set({
         rfMode: 'LIVE',
         rfStatus: `live · ${url}`,
-        log: pushLog(get().log, `RF SOURCE connected — ${url}`, 'info'),
+        log: pushLog(get().log, `RF SOURCE connected - ${url}`, 'info'),
       })
     } catch {
       set({ rfStatus: 'connection failed' })
@@ -488,11 +488,11 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
     set({
       rfMode: 'SIMULATED',
       rfStatus: 'simulated feed',
-      log: pushLog(get().log, 'RF SOURCE disconnected — reverting to simulated', 'info'),
+      log: pushLog(get().log, 'RF SOURCE disconnected - reverting to simulated', 'info'),
     })
   },
 
-  // Reset returns to a clean sandbox in normal (interactive) mode — the tour
+  // Reset returns to a clean sandbox in normal (interactive) mode - the tour
   // doesn't replay on reset, only on first load. Use startTour() explicitly to
   // re-run the guided intro.
   reset: () => set({
@@ -527,7 +527,7 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
       connections: conns,
       _relaySeq: state._relaySeq + RELAY_COUNT,
       meshHealth: computeHealth(relays, conns),
-      log: pushLog(state.log, `RING DEPLOYED — ${ring.length} relays, ${conns.length} links`, 'info'),
+      log: pushLog(state.log, `RING DEPLOYED - ${ring.length} relays, ${conns.length} links`, 'info'),
     })
   },
 
@@ -550,7 +550,7 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
       connections: conns,
       _relaySeq: seq,
       meshHealth: computeHealth(relays, conns),
-      log: pushLog(state.log, `${relay.id} DEPLOYED — ${conns.length} links`, 'info'),
+      log: pushLog(state.log, `${relay.id} DEPLOYED - ${conns.length} links`, 'info'),
     })
   },
 
@@ -563,7 +563,7 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
       elevation: elevationAt(lngLat[0], lngLat[1]),
       pad: computePad(lngLat[0], lngLat[1]),
     }
-    // New FOB may give relays a shorter path — recolor mesh via heal pass.
+    // New FOB may give relays a shorter path - recolor mesh via heal pass.
     const conns = healMesh(state.relays, state.connections)
     set({
       fobs: [...state.fobs, fob],
@@ -579,11 +579,11 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
     const kind = state.hostileType
     // Sea hostiles can only be placed on water; ground vehicles only on land.
     if (kind === 'WATER' && !isWater(lngLat[0], lngLat[1])) {
-      set({ log: pushLog(state.log, 'Cannot place surface vessel on land — pick water', 'warn') })
+      set({ log: pushLog(state.log, 'Cannot place surface vessel on land - pick water', 'warn') })
       return
     }
     if (kind === 'GROUND' && isWater(lngLat[0], lngLat[1])) {
-      set({ log: pushLog(state.log, 'Cannot place ground vehicle on water — pick land', 'warn') })
+      set({ log: pushLog(state.log, 'Cannot place ground vehicle on water - pick land', 'warn') })
       return
     }
     const seq = state._droneSeq + 1
@@ -608,7 +608,7 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
     set({
       drones: [...state.drones, drone],
       _droneSeq: seq,
-      log: pushLog(state.log, `${drone.id} PLACED — hostile ${label}`, 'warn'),
+      log: pushLog(state.log, `${drone.id} PLACED - hostile ${label}`, 'warn'),
     })
   },
 
@@ -631,8 +631,8 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
       connections: healed,
       meshHealth: computeHealth(relays, healed),
       log: pushLog(
-        pushLog(state.log, `${id} DESTROYED — mesh degraded`, 'kill'),
-        rerouted ? `MESH self-healing — ${rerouted} paths rerouted` : 'MESH stable — no reroute needed',
+        pushLog(state.log, `${id} DESTROYED - mesh degraded`, 'kill'),
+        rerouted ? `MESH self-healing - ${rerouted} paths rerouted` : 'MESH stable - no reroute needed',
         'warn'
       ),
     })
@@ -678,11 +678,11 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
     }
 
     const label = kind === 'AIR' ? 'UAV' : kind === 'WATER' ? 'surface vessel' : 'ground vehicle'
-    let log = pushLog(state.log, `SWARM INBOUND — ${n} hostile ${label}${n > 1 ? 's' : ''}`, 'warn')
+    let log = pushLog(state.log, `SWARM INBOUND - ${n} hostile ${label}${n > 1 ? 's' : ''}`, 'warn')
     // Warn if there's no FOB on screen for them to attack.
     const fobInView = state.fobs.some(f => isInViewport(f.position[0], f.position[1]))
     if (vp && !fobInView) {
-      log = pushLog(log, 'No FOB in view — place a FOB on screen for hostiles to target', 'warn')
+      log = pushLog(log, 'No FOB in view - place a FOB on screen for hostiles to target', 'warn')
     }
     set({
       drones: [...state.drones, ...newDrones],
@@ -708,7 +708,7 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
 
     const drones: Drone[] = state.drones.map(d => {
       if (!d.alive) return d
-      // Always steer toward the closest FOB — placing a new, nearer FOB
+      // Always steer toward the closest FOB - placing a new, nearer FOB
       // reroutes live hostiles to it.
       const target = nearestFob(d.position, fobs)
       let targetFobId = d.targetFobId
@@ -791,7 +791,7 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
               packets = [...packets, makePacket(waypoints, at, packetSeq)]
             }
             engageAt = at + arrival + FOB_REACTION_MS
-            log = pushLog(log, `${relay.id}: THREAT DETECTED — routing to ${target?.id ?? 'FOB'}`, 'alert')
+            log = pushLog(log, `${relay.id}: THREAT DETECTED - routing to ${target?.id ?? 'FOB'}`, 'alert')
             break
           }
         }
@@ -858,7 +858,7 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
       if (distanceKm(np, tgt.position) <= INTERCEPTOR_IMPACT_KM) {
         impacted.add(x.targetId)
         bursts = [...bursts, { id: `b${x.id}`, position: np, elevation: elevationAt(np[0], np[1]), startedAt: at }]
-        log = pushLog(log, `${x.targetId}: NEUTRALIZED by ${x.id} — tracking intercept`, 'kill')
+        log = pushLog(log, `${x.targetId}: NEUTRALIZED by ${x.id} - tracking intercept`, 'kill')
         return { ...x, position: np, heading, track: trk, alive: false }
       }
       return { ...x, position: np, heading, track: trk }
@@ -881,7 +881,7 @@ export const useSimStore = create<SandboxStore>((set, get) => ({
     bursts = bursts.filter(b => at - b.startedAt < BURST_MS)
     packets = packets.filter(p => at - p.endTime < PACKET_TRAIL_MS)
 
-    // RF telemetry — a gated RF carrier (carrier pulsed on/off by a gate),
+    // RF telemetry - a gated RF carrier (carrier pulsed on/off by a gate),
     // matching how a real captured signal looks: short bursts up to the carrier
     // power on a noise floor. In SIMULATED mode we synthesize per-relay bursts;
     // in LIVE mode samples arrive via ingestRf and we only roll the carrier here.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_detector.sh — start the drone detector and bridge its events into the
+# run_detector.sh - start the drone detector and bridge its events into the
 # local mesh via sensor_relay's ingress port.
 #
 # Requires create_network.sh (or sensor_relay.py with the same SENSOR_PORT) to

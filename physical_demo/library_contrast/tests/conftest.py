@@ -1,4 +1,4 @@
-"""Shared pytest setup — short captures keep tests fast."""
+"""Shared pytest setup - short captures keep tests fast."""
 from __future__ import annotations
 
 import numpy as np

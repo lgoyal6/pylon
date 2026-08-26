@@ -29,7 +29,7 @@ Chop into ~10 ms windows  →  FFT  →  SPECTROGRAM (freq × time × power)
   LEARN phase: collect windows of ambient RF (WiFi/BT) = "normal", fit model
   WATCH phase: each window → anomaly score; score spike → detection
       ▼
-Detection service (port 5001)  — NO dashboard, just status
+Detection service (port 5001)  - NO dashboard, just status
   ├─► GET :5001/status → { "detected": true|false, ... }   (binary state)
   └─► publishes detection JSON → UDP multicast group  (teammate's relay reads)
 ```

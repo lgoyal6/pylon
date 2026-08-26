@@ -2,7 +2,7 @@
 
 One generator per emitter class. Each returns complex baseband IQ at
 `SAMPLE_RATE_HZ`. The classes are designed to be spectrally distinct so the
-library baseline can learn them — and so the held-out `novel` class is far
+library baseline can learn them - and so the held-out `novel` class is far
 enough from all of them that the library reliably misses it.
 """
 from __future__ import annotations
@@ -24,7 +24,7 @@ def _samples(duration_s: float, sample_rate: float) -> int:
 
 
 def generate_ambient(duration_s: float, sample_rate: float, rng: np.random.Generator) -> np.ndarray:
-    """Pure complex AWGN — what the room sounds like with nothing transmitting."""
+    """Pure complex AWGN - what the room sounds like with nothing transmitting."""
     n = _samples(duration_s, sample_rate)
     # Use a known noise floor so SNR math elsewhere is meaningful.
     sigma = 0.1
@@ -74,7 +74,7 @@ def generate_lora(duration_s: float, sample_rate: float, snr_db: float, rng: np.
 
     Original 40 ms chirps were too slow to be visible in a 500 µs FFT window
     (looked like a narrow tone). 500 µs chirps mean each window sees most of
-    a sweep — wide spread is the discriminator.
+    a sweep - wide spread is the discriminator.
     """
     n = _samples(duration_s, sample_rate)
     sig = np.zeros(n, dtype=np.complex64)
@@ -92,7 +92,7 @@ def generate_lora(duration_s: float, sample_rate: float, snr_db: float, rng: np.
 
 
 def generate_expresslrs(duration_s: float, sample_rate: float, snr_db: float, rng: np.random.Generator) -> np.ndarray:
-    """Very narrow CW tone hopping every ~2 ms — modern FPV control link shape.
+    """Very narrow CW tone hopping every ~2 ms - modern FPV control link shape.
 
     Tone is much narrower (single sinusoid) than the BT GFSK burst, so the
     two narrow-hopping classes separate cleanly in the spectrum.
@@ -111,7 +111,7 @@ def generate_expresslrs(duration_s: float, sample_rate: float, snr_db: float, rn
 def generate_novel(duration_s: float, sample_rate: float, snr_db: float, rng: np.random.Generator) -> np.ndarray:
     """Dual-tone CW: two steady narrow tones, no hopping, continuous.
 
-    Designed to look unlike any training class — RF can't fit it to wifi
+    Designed to look unlike any training class - RF can't fit it to wifi
     (wideband), BT/ExpressLRS (hopping), or LoRa (chirp). This is the
     "unknown adversary drone" stand-in.
     """

@@ -47,7 +47,7 @@ def test_features_finite_for_all_classes(short_duration):
 
 
 def test_ambient_and_emitter_features_differ(short_duration):
-    """Sanity check — the synthetic classes had better be separable in feature space."""
+    """Sanity check - the synthetic classes had better be separable in feature space."""
     amb = features.iq_to_features(synthetic.generate("ambient", duration_s=short_duration, seed=0))
     wifi = features.iq_to_features(synthetic.generate("wifi", duration_s=short_duration, seed=0))
     # Total spectral power should differ meaningfully (wifi >> ambient).

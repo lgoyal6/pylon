@@ -54,7 +54,7 @@ def _random_id(n: int = 6) -> str:
 
 
 def _detect_local_ip() -> str:
-    """Best-effort LAN IP guess (connected-UDP trick — no packets sent)."""
+    """Best-effort LAN IP guess (connected-UDP trick - no packets sent)."""
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     try:
         s.connect(("8.8.8.8", 80))
@@ -137,7 +137,7 @@ class Node:
             return dict(self._peers)
 
     def broadcast(self, message: str) -> int:
-        """Originate a new message — fan out to every connected peer."""
+        """Originate a new message - fan out to every connected peer."""
         msg_id = uuid.uuid4().hex
         self._mark_seen(msg_id)
         self._to_sink(self.node_id, message)
@@ -240,7 +240,7 @@ class Node:
                 for _pid, (ip, port, _seen) in current.items():
                     self._send_hello((ip, port))
             elif self._bootstrap_list:
-                # We don't have any peers yet — keep knocking on every
+                # We don't have any peers yet - keep knocking on every
                 # bootstrap target until one responds (or one comes online).
                 for addr in self._bootstrap_list:
                     self._send_join(addr)
@@ -282,7 +282,7 @@ class Node:
         if len(parts) < 2:
             return
         peer_id = parts[0]
-        # parts[1] is the advertised port — kept in the protocol for clarity
+        # parts[1] is the advertised port - kept in the protocol for clarity
         # but ignored: through a NAT (e.g. WSL2 behind Windows, iPhone tether,
         # corporate firewall) the internal port isn't reachable from outside,
         # so we always use `addr` (the kernel-visible source), which IS the
@@ -300,7 +300,7 @@ class Node:
         peer_id = parts[0]
         if not peer_id or peer_id == self.node_id:
             return
-        # Use the kernel-visible source as the peer's reachable address — see
+        # Use the kernel-visible source as the peer's reachable address - see
         # _handle_hello for why we ignore the advertised port.
         self._add_peer(peer_id, addr[0], addr[1])
         # Immediate HELLO back so the joiner gets our peer list within ms,
@@ -315,7 +315,7 @@ class Node:
         if origin_id == self.node_id:
             return
         if not self._mark_seen(msg_id):
-            return  # duplicate — drop, do not re-forward
+            return  # duplicate - drop, do not re-forward
         self._to_sink(origin_id, message)
         try:
             self.on_message(origin_id, message)
@@ -372,7 +372,7 @@ def _stdin_loop(node: Node) -> None:
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        description="P2P mesh node — bootstrap by known peer, no multicast."
+        description="P2P mesh node - bootstrap by known peer, no multicast."
     )
     parser.add_argument("--id", dest="node_id", default=None,
                         help="optional short ID (auto-generated if omitted)")
@@ -383,7 +383,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--bootstrap", action="append", default=[],
                         metavar="HOST:PORT",
                         help="address of an existing peer to join through. "
-                             "May be given more than once — first to answer "
+                             "May be given more than once - first to answer "
                              "wins, so a list survives any single node going down.")
     parser.add_argument("--advertise-ip", default=None,
                         help="LAN IP to advertise to peers (default: auto-detect)")

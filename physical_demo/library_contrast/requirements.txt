@@ -1,4 +1,4 @@
-# Iteration 3 — library-contrast baseline. Runs offline against synthetic or
+# Iteration 3 - library-contrast baseline. Runs offline against synthetic or
 # recorded IQ; no SDR dependencies.
 numpy>=2.0
 scipy>=1.13

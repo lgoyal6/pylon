@@ -1,9 +1,9 @@
-"""Case 3 — trained classifier + a bus source that runs it.
+"""Case 3 - trained classifier + a bus source that runs it.
 
 `RFClassifier` wraps a scikit-learn RandomForest over the feature vectors from
-features.py (data-efficient, interpretable — see README on why not a CNN).
+features.py (data-efficient, interpretable - see README on why not a CNN).
 `ClassifierSource` captures a window-stack, classifies it, and pushes a detection
-event to the bus for any non-background ("quiet") prediction — slotting in like
+event to the bus for any non-background ("quiet") prediction - slotting in like
 the other detection sources.
 """
 import threading
@@ -29,7 +29,7 @@ class RFClassifier:
         return str(self.model.predict(np.asarray(vec, dtype=float).reshape(1, -1))[0])
 
     def predict_conf(self, vec) -> float:
-        """Max class probability for `vec` — used as the detection's anomaly_score."""
+        """Max class probability for `vec` - used as the detection's anomaly_score."""
         proba = self.model.predict_proba(np.asarray(vec, dtype=float).reshape(1, -1))[0]
         return float(np.max(proba))
 

@@ -44,15 +44,15 @@ export default function SelectionPanel() {
     const rf = rfLatest[relay.id]
     props.push(
       ['Node Id', relay.id],
-      ['Status', relay.alert ? 'ALERT — threat in range' : 'ONLINE'],
+      ['Status', relay.alert ? 'ALERT - threat in range' : 'ONLINE'],
       ['Latitude', relay.position[1].toFixed(5)],
       ['Longitude', relay.position[0].toFixed(5)],
       ['Comm Range', `${Math.round(relay.range)} km`],
       ['Active Links', String(relay.connections.length)],
       ['Mean Latency', `${latency} ms`],
-      ['RF Signal', rf ? `${rf.rssiDbm} dBm` : '—'],
-      ['RF SNR', rf ? `${rf.snrDb} dB` : '—'],
-      ['Frequency', rf ? `${rf.freqMhz} MHz` : '—'],
+      ['RF Signal', rf ? `${rf.rssiDbm} dBm` : '-'],
+      ['RF SNR', rf ? `${rf.snrDb} dB` : '-'],
+      ['Frequency', rf ? `${rf.freqMhz} MHz` : '-'],
     )
   } else if (fob) {
     subtitle = '[Asset] Command / FOB'
@@ -75,7 +75,7 @@ export default function SelectionPanel() {
       ['Track Id', drone.id],
       ['Class', cls],
       ['Status', drone.detected ? 'TRACKED' : 'INBOUND'],
-      ['Target FOB', drone.targetFobId ?? '—'],
+      ['Target FOB', drone.targetFobId ?? '-'],
       ['Latitude', drone.position[1].toFixed(5)],
       ['Longitude', drone.position[0].toFixed(5)],
       ['Range to FOB', `${dist} km`],
@@ -159,12 +159,12 @@ export default function SelectionPanel() {
 
         {tab === 'Series' && (
           <div style={{ padding: '12px' }}>
-            <span style={labelStyle}>RF SIGNAL — dBm</span>
+            <span style={labelStyle}>RF SIGNAL - dBm</span>
             <div style={{ marginTop: '8px' }}>
               <SignalChart data={series} height={110} color="#7a3a6a" fill="#7a3a6a18" min={-100} max={-40} />
             </div>
             <span style={{ fontSize: '9px', color: '#3a3b3e', display: 'block', marginTop: '8px', lineHeight: 1.5 }}>
-              {series.length ? `${series.length} samples buffered` : 'no RF samples yet — select a relay'}
+              {series.length ? `${series.length} samples buffered` : 'no RF samples yet - select a relay'}
             </span>
           </div>
         )}

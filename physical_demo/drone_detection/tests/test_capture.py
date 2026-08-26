@@ -1,4 +1,4 @@
-"""Hardware smoke test — skips cleanly when the rtl_sdr CLI or device is absent."""
+"""Hardware smoke test - skips cleanly when the rtl_sdr CLI or device is absent."""
 import shutil
 
 import numpy as np

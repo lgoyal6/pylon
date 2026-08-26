@@ -19,13 +19,13 @@ def _noise(seed, amp=1.0, n=N):
 
 
 def _tone(seed, freq_offset_hz, amp, n=N, fs=FS):
-    """A single CW tone (≈one bin) — models an RTL spur, not a real emitter."""
+    """A single CW tone (≈one bin) - models an RTL spur, not a real emitter."""
     t = np.arange(n) / fs
     return _noise(seed) + (amp * np.exp(2j * np.pi * freq_offset_hz * t)).astype(np.complex64)
 
 
 def _wideband(seed, center_off_hz, bw_hz, amp, n=N, fs=FS):
-    """Band-limited signal occupying ~bw_hz — models a real emitter (e.g. FM)."""
+    """Band-limited signal occupying ~bw_hz - models a real emitter (e.g. FM)."""
     rng = np.random.default_rng(seed)
     x = rng.standard_normal(n) + 1j * rng.standard_normal(n)
     X = np.fft.fft(x)
@@ -87,7 +87,7 @@ def test_tone_is_less_flat_than_noise():
 
 def test_classify_wideband_noise_as_jamming_like():
     # Barrage-style: noise-like energy across a wide swath (kept <50% of the band
-    # so median-based occupancy stays valid — full-band barrage is detected by the
+    # so median-based occupancy stays valid - full-band barrage is detected by the
     # per-bin anomaly baseline instead).
     _, psd = welch_psd(_wideband(2, center_off_hz=0, bw_hz=1_000_000, amp=6.0), FS, 4096)
     m = psd_metrics(psd, FS, config.OCCUPANCY_MARGIN_DB)

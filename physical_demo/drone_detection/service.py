@@ -135,7 +135,7 @@ class SimRequest(BaseModel):
 
 def _mesh_event(snapshot: dict) -> None:
     """The sink: build the contract event from a bus snapshot and send it to the
-    mesh. The ONLY place that calls publisher.send — detection sources never touch
+    mesh. The ONLY place that calls publisher.send - detection sources never touch
     the mesh directly, they just publish snapshots to the bus."""
     publisher.send(build_event(snapshot))
 

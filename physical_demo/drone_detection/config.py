@@ -65,7 +65,7 @@ PLUTO_DEFAULT_CENTER_FREQ_HZ = int(os.environ.get("DRONE_PLUTO_CENTER_FREQ_HZ", 
 # --- Energy-threshold detector (Iteration 1) --------------------------------
 # Detection is by occupied bandwidth, not peak SNR: on RTL-SDR a single-bin spur
 # matches a strong station in peak-over-floor, but a real emitter occupies real
-# bandwidth. Tuned for FM (~200 kHz wide) vs quiet/spurs (~25 kHz) — retune
+# bandwidth. Tuned for FM (~200 kHz wide) vs quiet/spurs (~25 kHz) - retune
 # MIN_OCCUPIED_BW_HZ for a narrowband emitter band later.
 FFT_NPERSEG = int(os.environ.get("DRONE_FFT_NPERSEG", "4096"))
 OCCUPANCY_MARGIN_DB = float(os.environ.get("DRONE_OCCUPANCY_MARGIN_DB", "6.0"))  # bins this far above floor count as occupied
@@ -100,5 +100,5 @@ QUANTILE_SCORE_SCALE_DB = float(os.environ.get("DRONE_QUANTILE_SCORE_SCALE_DB", 
 # Coarse behavioral label for a flagged anomaly (detector.classify_emitter):
 # wide occupancy -> "jamming-like"; narrow/channelized -> "comms-like". Spectral
 # flatness is reported alongside but does not gate (see classify_emitter).
-# Heuristic threshold — tune against the live ambient.
+# Heuristic threshold - tune against the live ambient.
 JAMMING_BW_FRAC = float(os.environ.get("DRONE_JAMMING_BW_FRAC", "0.3"))  # occupied/captured bandwidth fraction

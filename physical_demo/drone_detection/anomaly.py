@@ -1,7 +1,7 @@
 """Iteration 2 detector: open-world RF anomaly detection (the product).
 
-Learns the ambient spectrum as "normal" — a per-frequency-bin baseline
-(mean/std of the normalized PSD shape) — then flags a window when any bin's
+Learns the ambient spectrum as "normal" - a per-frequency-bin baseline
+(mean/std of the normalized PSD shape) - then flags a window when any bin's
 power rises far above its learned baseline (max z-score). This catches an
 *unknown* emitter a signature library would miss. Stationary spurs/ambient seen
 during learning are baked into the baseline, so they stop false-alarming (the
@@ -54,9 +54,9 @@ class AnomalyDetector:
 
         self.fitted = False
         self._buffer = []
-        self._mean = None  # per-bin baseline mean (dB shape) — zscore
-        self._std = None  # per-bin baseline std (floored) — zscore
-        self._ceiling = None  # per-bin learned high-percentile ceiling — quantile
+        self._mean = None  # per-bin baseline mean (dB shape) - zscore
+        self._std = None  # per-bin baseline std (floored) - zscore
+        self._ceiling = None  # per-bin learned high-percentile ceiling - quantile
         self._save_path = None  # if set, persist the baseline once learned
 
     def _featurize(self, iq: np.ndarray):

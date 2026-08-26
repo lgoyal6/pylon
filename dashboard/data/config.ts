@@ -24,7 +24,7 @@ export const HOSTILE_SPEED_KMH: Record<HostileType, number> = {
 export const SWARM_SPAWN_RADIUS_DEG = 0.62
 export const SWARM_DEFAULT_SIZE = 5
 export const SWARM_MAX_SIZE = 12
-// Point-blank fail-safe radius — small, so the tracking interceptor (below) is
+// Point-blank fail-safe radius - small, so the tracking interceptor (below) is
 // what normally kills, not the FOB perimeter.
 export const INTERCEPT_RADIUS_KM = 3
 
@@ -43,7 +43,7 @@ export const TRANSMIT_PERIOD_MS = 2400
 
 // FOB engagement: once a pylon's detection packet reaches the FOB, the FOB
 // launches an interceptor. This is the reaction delay (ms) after packet arrival
-// before launch — engages threats at range, not point-blank.
+// before launch - engages threats at range, not point-blank.
 export const FOB_REACTION_MS = 150
 // The interceptor is a tracking munition: it flies from the FOB and chases the
 // drone. It moves faster than the drone so it runs the target down, and

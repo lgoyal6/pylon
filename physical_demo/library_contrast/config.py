@@ -1,6 +1,6 @@
 """Library-contrast experiment configuration.
 
-The eval runs offline against synthetic or recorded IQ — these constants are
+The eval runs offline against synthetic or recorded IQ - these constants are
 the knobs you'd tune to match the real RF capture once it exists.
 """
 from __future__ import annotations
@@ -9,11 +9,11 @@ from __future__ import annotations
 # RTL-SDR (NESDR SMArt v5) practical sample rate; max is 2.4 MHz but 2.048 MHz
 # is the stable sweet spot.
 SAMPLE_RATE_HZ: float = 2_048_000.0
-# 915 MHz ISM by default — what an ExpressLRS / SiK telemetry link would use.
+# 915 MHz ISM by default - what an ExpressLRS / SiK telemetry link would use.
 CENTER_FREQ_HZ: float = 915_000_000.0
 
 # --- Windowing / features ---------------------------------------------------
-# 1024-sample windows ≈ 500 µs at 2.048 MS/s — short enough to resolve BT-style
+# 1024-sample windows ≈ 500 µs at 2.048 MS/s - short enough to resolve BT-style
 # hops, long enough to keep FFT resolution reasonable.
 WINDOW_SAMPLES: int = 1024
 HOP_SAMPLES: int = 512

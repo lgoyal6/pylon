@@ -59,7 +59,7 @@ class PlutoCapture:
     """Live ADALM-Pluto capture via pyadi-iio (libiio USB backend).
 
     Same ``read_window(n) -> normalized complex64`` contract as RtlCapture, so it
-    drops into DetectorRunner unchanged — but reaches 2.4 GHz (the RTL can't),
+    drops into DetectorRunner unchanged - but reaches 2.4 GHz (the RTL can't),
     enabling WiFi/BT-band detection. The Pluto's 12-bit ADC returns samples in
     int16 range (|sample| up to ~2048); we normalize by 2048 to land in ~[-1, 1],
     matching the RTL path's convention.

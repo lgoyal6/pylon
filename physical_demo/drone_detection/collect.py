@@ -1,4 +1,4 @@
-"""Case 3 — capture labeled feature rows into a dataset for train.py.
+"""Case 3 - capture labeled feature rows into a dataset for train.py.
 
     python collect.py --label wifi   --sdr pluto --freq 2437000000 --stacks 200
     python collect.py --label quiet  --sdr pluto --freq 2437000000 --stacks 200
