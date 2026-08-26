@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# create_network.sh — start the mesh bootstrap host.
+# create_network.sh - start the mesh bootstrap host.
 #
 # Runs sensor_relay.py on a known port. This is both:
 #   (a) the mesh's bootstrap target (other nodes use --bootstrap <ip>:MESH_PORT)

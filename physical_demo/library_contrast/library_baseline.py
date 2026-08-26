@@ -1,4 +1,4 @@
-"""Library baseline — the Dedrone/DroneShield analog.
+"""Library baseline - the Dedrone/DroneShield analog.
 
 Implemented as **distance-based template matching**, not a soft-max classifier.
 That matches how real signature libraries behave: each known emitter has a
@@ -75,7 +75,7 @@ class LibraryBaseline:
 
         A miss = this returns False on a window that truly contains an emitter
         (whether known or novel). The novel emitter falls into ``no_match``
-        because it doesn't resemble any stored fingerprint — that's the miss
+        because it doesn't resemble any stored fingerprint - that's the miss
         the anomaly detector recovers.
         """
         preds = self.predict(X)

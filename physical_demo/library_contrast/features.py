@@ -45,7 +45,7 @@ def _summary_stats(psd_bins: np.ndarray) -> np.ndarray:
     total = p.sum() + 1e-12
     idx = np.arange(p.size, dtype=np.float32)
     centroid = float((idx * p).sum() / total)
-    # Spread around the centroid — wide for WiFi/LoRa, narrow for BT/CW.
+    # Spread around the centroid - wide for WiFi/LoRa, narrow for BT/CW.
     spread = float(np.sqrt(((idx - centroid) ** 2 * p).sum() / total))
     peak = float(psd_bins.max())
     # Occupancy: fraction of bins within 10 dB of the peak (rough BW indicator).

@@ -89,7 +89,7 @@ def _quantile_detector():
 
 
 def test_quantile_learns_intermittent_burst_as_normal():
-    # A burst identical to the learned (bursty) ambient must NOT flag — it sits
+    # A burst identical to the learned (bursty) ambient must NOT flag - it sits
     # under the learned per-bin ceiling. (mean/std would be twitchier here.)
     det = _quantile_detector()
     assert det.fitted is True

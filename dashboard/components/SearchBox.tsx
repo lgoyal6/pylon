@@ -68,7 +68,7 @@ export default function SearchBox() {
       <input
         value={q}
         onChange={e => { setQ(e.target.value); setError('') }}
-        placeholder="Search location — e.g. Japan"
+        placeholder="Search location - e.g. Japan"
         spellCheck={false}
         style={{
           background: 'transparent',

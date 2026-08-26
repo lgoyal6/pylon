@@ -1,4 +1,4 @@
-"""Case 2 — Bluetooth-scanner detection source.
+"""Case 2 - Bluetooth-scanner detection source.
 
 The ELEGOO car's HC-05 is a *cooperative, discoverable* Bluetooth Classic device,
 so the reliable way to detect it is to ask, not overhear: run a BT inquiry and
@@ -8,7 +8,7 @@ known-protocol device (vs the SDR, which only sees "Bluetooth-like energy").
 Detection is via the macOS `blueutil --inquiry` CLI (Classic discovery; CoreBlue-
 tooth/`bleak` are BLE-only and won't see an HC-05). The scan function is injected
 so the source logic is testable without blueutil/hardware. Pushes standardized
-events to the DetectionBus like any other source — the mesh sink does the rest.
+events to the DetectionBus like any other source - the mesh sink does the rest.
 """
 import json
 import subprocess

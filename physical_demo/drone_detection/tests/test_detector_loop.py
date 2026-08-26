@@ -24,7 +24,7 @@ def _noise(seed):
 
 
 def _noise_plus_signal(seed):
-    """Band-limited ~200 kHz signal in noise — models a real wideband emitter."""
+    """Band-limited ~200 kHz signal in noise - models a real wideband emitter."""
     rng = np.random.default_rng(seed)
     x = rng.standard_normal(N) + 1j * rng.standard_normal(N)
     X = np.fft.fft(x)

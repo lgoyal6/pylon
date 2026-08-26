@@ -1,4 +1,4 @@
-"""Case 3 — feature extraction: IQ window-stack -> a compact feature vector.
+"""Case 3 - feature extraction: IQ window-stack -> a compact feature vector.
 
 Each window is summarized from its Welch PSD (reusing detector.py); a short stack
 of windows adds the temporal features that single-window stats can't see

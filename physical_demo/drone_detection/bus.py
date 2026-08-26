@@ -1,6 +1,6 @@
 """Decoupling buffer between detection sources and the mesh sink.
 
-Any detection method — SDR anomaly/classifier, BT scanner, etc. — pushes a
+Any detection method - SDR anomaly/classifier, BT scanner, etc. - pushes a
 standardized detection event onto the bus and knows nothing about the mesh. A
 single sink (see service.drain_bus) drains it to /status + the mesh. This lets
 detection methods be swapped or combined without touching the publishing path.
@@ -18,7 +18,7 @@ class DetectionBus:
         self._q: "queue.Queue[dict]" = queue.Queue(maxsize=maxsize)
 
     def publish(self, event: dict) -> None:
-        """Push a detection event. Non-blocking: drops if full (real-time data —
+        """Push a detection event. Non-blocking: drops if full (real-time data -
         a stalled source is worse than a dropped stale event)."""
         try:
             self._q.put_nowait(event)

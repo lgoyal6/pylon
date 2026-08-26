@@ -1,4 +1,4 @@
-"""Receiver CLI — RTL-SDR live detection display.
+"""Receiver CLI - RTL-SDR live detection display.
 
 Captures from the NESDR/RTL, runs the open-world anomaly detector (or the energy
 detector), and prints detections live to the terminal. Pairs with beacon.py: tune
@@ -10,7 +10,7 @@ Run (RTL on USB):
     python receiver.py --freq 433920000                 # anomaly detector (product)
     python receiver.py --freq 433920000 --detector energy
 
-Reuses RtlCapture + AnomalyDetector/EnergyThresholdDetector — no new detection
+Reuses RtlCapture + AnomalyDetector/EnergyThresholdDetector - no new detection
 logic, just a live display instead of the FastAPI service.
 """
 import argparse
@@ -62,7 +62,7 @@ def main() -> None:
 
     print(f"Receiver [{args.sdr}]: {args.detector} detector @ {freq/1e6:.3f} MHz, gain={args.gain}")
     if args.detector == "anomaly":
-        print(f"Learning ambient ~{args.learn_seconds:.0f}s — keep the beacon OFF. Then start beacon.py.")
+        print(f"Learning ambient ~{args.learn_seconds:.0f}s - keep the beacon OFF. Then start beacon.py.")
 
     on = off = 0
     detected = False
@@ -70,7 +70,7 @@ def main() -> None:
         while True:
             iq = cap.read_window(window)
             if iq.size == 0:
-                print("\n[stream ended — no RTL device?]")
+                print("\n[stream ended - no RTL device?]")
                 break
             res = detector.evaluate(iq)
 
@@ -92,7 +92,7 @@ def main() -> None:
                       f"bw={res['occupied_bw_hz']/1e3:.0f}kHz flat={res['flatness']:.2f}")
             elif detected and off >= config.DEBOUNCE_OFF:
                 detected = False
-                print(f"\n  ○ {time.strftime('%H:%M:%S')}  cleared — quiet again")
+                print(f"\n  ○ {time.strftime('%H:%M:%S')}  cleared - quiet again")
 
             tag = f"🚨 SIGNAL: {kind}" if detected else "· quiet"
             sys.stdout.write(f"\r  [{tag}] score={res['anomaly_score']:.2f} "

@@ -24,7 +24,7 @@ def test_fit_and_predict_known_classes(short_duration):
     X, y = _features_for(classes, duration_s=short_duration)
     lib = LibraryBaseline().fit(X, y)
     preds = lib.predict(X)
-    # Held-in accuracy should be high — the library should match its own training points.
+    # Held-in accuracy should be high - the library should match its own training points.
     matched = preds != NO_MATCH
     correct = (preds == y) & matched
     assert matched.mean() > 0.8, f"too many self-rejections: {matched.mean():.0%}"

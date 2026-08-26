@@ -29,7 +29,7 @@ export default function Home() {
 
       {/* Main content */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
-        {/* Map — 70% */}
+        {/* Map - 70% */}
         <div
           style={{
             flex: '0 0 70%',
@@ -56,7 +56,7 @@ export default function Home() {
             overflow: 'hidden',
           }}
         >
-          {/* Controls — top */}
+          {/* Controls - top */}
           <div style={{ flexShrink: 0, borderBottom: '1px solid #1a1b1e' }}>
             <Controls />
           </div>
@@ -66,7 +66,7 @@ export default function Home() {
             <AssetRoster />
           </div>
 
-          {/* Event log — fills remaining space */}
+          {/* Event log - fills remaining space */}
           <div
             style={{
               flex: 1,
@@ -80,7 +80,7 @@ export default function Home() {
             <EventLog />
           </div>
 
-          {/* Mesh status — bottom */}
+          {/* Mesh status - bottom */}
           <div style={{ flexShrink: 0 }}>
             <MeshStatus />
           </div>

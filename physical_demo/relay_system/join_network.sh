@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# join_network.sh — join an existing mesh as a peer / observer.
+# join_network.sh - join an existing mesh as a peer / observer.
 #
 # Usage:
 #   ./join_network.sh <bootstrap-host:port>          # join, just print messages

@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 import matplotlib
 
-matplotlib.use("Agg")  # headless — write the PNG without needing a display.
+matplotlib.use("Agg")  # headless - write the PNG without needing a display.
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -53,7 +53,7 @@ def _build_dataset(
 def _train_test_split(
     features_by_class: dict[str, np.ndarray], train_fraction: float, rng: np.random.Generator
 ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
-    """Per-class random split — keeps test windows from every class for eval."""
+    """Per-class random split - keeps test windows from every class for eval."""
     train, test = {}, {}
     for name, X in features_by_class.items():
         idx = rng.permutation(X.shape[0])
@@ -96,7 +96,7 @@ def evaluate(
     )
     library = LibraryBaseline().fit(X_lib_train, y_lib_train)
 
-    # Anomaly detector sees only ambient — that's the whole point of the wedge.
+    # Anomaly detector sees only ambient - that's the whole point of the wedge.
     anomaly = AnomalyDetector().fit(train[config.AMBIENT_CLASS])
 
     per_class: list[ClassResult] = []
@@ -131,7 +131,7 @@ def write_chart(result: EvalResult, path: str) -> None:
     bars_lib = ax.bar(x - width / 2, lib, width, label="Library baseline", color="#c0504d")
     bars_ano = ax.bar(x + width / 2, ano, width, label="Anomaly detector (ours)", color="#4f81bd")
 
-    # Highlight the novel column — the pitch metric lives here.
+    # Highlight the novel column - the pitch metric lives here.
     novel_idx = names.index(config.NOVEL_CLASS)
     ax.axvspan(novel_idx - 0.5, novel_idx + 0.5, color="#fff3bf", alpha=0.6, zorder=0)
     ax.annotate(
@@ -146,7 +146,7 @@ def write_chart(result: EvalResult, path: str) -> None:
     ax.set_xticklabels(names, rotation=20)
     ax.set_ylabel("Miss rate (ambient column = false-positive rate)")
     ax.set_ylim(0, 1.05)
-    ax.set_title("Library vs anomaly detector — per-class miss rate")
+    ax.set_title("Library vs anomaly detector - per-class miss rate")
     ax.legend()
     ax.grid(axis="y", linestyle=":", alpha=0.4)
 
@@ -168,7 +168,7 @@ def write_chart(result: EvalResult, path: str) -> None:
 
 def write_table(result: EvalResult, path: str) -> None:
     lines = [
-        "# Library vs anomaly detector — miss rates",
+        "# Library vs anomaly detector - miss rates",
         "",
         "| Class | Role | Library miss | Anomaly miss | Test windows |",
         "| --- | --- | ---: | ---: | ---: |",
@@ -198,7 +198,7 @@ def write_table(result: EvalResult, path: str) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="library_contrast",
-        description="Iteration 3 — library vs anomaly miss-rate experiment.",
+        description="Iteration 3 - library vs anomaly miss-rate experiment.",
     )
     parser.add_argument("--output-dir", default=config.DEFAULT_OUTPUT_DIR)
     parser.add_argument("--duration-s", type=float, default=config.DURATION_PER_CLASS_S)

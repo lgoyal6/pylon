@@ -2,7 +2,7 @@
 
 `/status` reads it, the multicast publisher emits from it, and "the detector"
 writes it. In Iteration 0 the detector was the `/sim` endpoint; in Iteration 1 a
-capture+detect loop (a background thread) writes the same object — that seam
+capture+detect loop (a background thread) writes the same object - that seam
 stays fixed.
 
 Because a capture thread now mutates state while the event loop reads it, a

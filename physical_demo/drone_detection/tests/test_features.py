@@ -1,6 +1,6 @@
 """Feature extraction: IQ window-stack -> 8-number feature vector.
 
-Tested against the beacon waveforms — the real test of a feature set is that
+Tested against the beacon waveforms - the real test of a feature set is that
 distinct signal types land in distinct regions.
 """
 import numpy as np

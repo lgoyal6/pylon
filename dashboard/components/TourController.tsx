@@ -85,7 +85,7 @@ export default function TourController() {
         play()
         break
     }
-    // step is the only meaningful trigger — re-firing on drone/burst array
+    // step is the only meaningful trigger - re-firing on drone/burst array
     // identity changes would yank the camera around.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, active])

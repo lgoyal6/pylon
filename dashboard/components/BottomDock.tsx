@@ -93,7 +93,7 @@ export default function BottomDock() {
         {/* Layers / series list */}
         <div style={{ width: '190px', borderRight: '1px solid #1a1b1e', padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
           <span style={labelStyle}>SERIES</span>
-          <SeriesRow swatch="#7a3a6a" label={seriesLabel} value={series.length ? `${series[series.length - 1]} dBm` : '—'} active />
+          <SeriesRow swatch="#7a3a6a" label={seriesLabel} value={series.length ? `${series[series.length - 1]} dBm` : '-'} active />
           <SeriesRow swatch="#3a5a4a" label="MESH LINKS" value="active" />
           <SeriesRow swatch="#7a6a3a" label="THREAT TRACK" value={droneCount > 0 ? `${droneCount} live` : 'clear'} />
           <div style={{ marginTop: 'auto' }}>

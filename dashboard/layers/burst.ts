@@ -2,7 +2,7 @@ import { ScatterplotLayer } from '@deck.gl/layers'
 import type { Burst } from '../sim/state'
 import { BURST_MS, BURST_MAX_RADIUS_M } from '../data/config'
 
-// Expanding red ring where an interceptor detonates — replaces the old straight
+// Expanding red ring where an interceptor detonates - replaces the old straight
 // intercept lines. Radius grows and fades over BURST_MS.
 export function buildBurstLayer(bursts: Burst[], animationTime: number) {
   return new ScatterplotLayer({

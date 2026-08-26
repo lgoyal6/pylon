@@ -108,7 +108,7 @@ export default function AssetRoster() {
           <div style={{ maxHeight: '28vh', overflowY: 'auto', borderTop: '1px solid #1a1b1e' }}>
             {rows.length === 0 && (
               <div style={{ padding: '10px 12px', fontSize: '10px', color: '#3a3b3e' }}>
-                no assets — deploy relays or a ring
+                no assets - deploy relays or a ring
               </div>
             )}
             {rows.map(row => {

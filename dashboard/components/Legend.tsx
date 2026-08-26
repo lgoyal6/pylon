@@ -48,9 +48,9 @@ export default function Legend() {
           <Row color="rgb(230,232,236)" label="Threat packet (white)" ring />
 
           <span style={{ ...labelStyle, display: 'block', margin: '8px 0 4px' }}>Threat</span>
-          <Row color="rgb(235,80,70)" label="Hostile — air (UAV)" />
-          <Row color="rgb(225,95,125)" label="Hostile — water" />
-          <Row color="rgb(205,65,55)" label="Hostile — ground" />
+          <Row color="rgb(235,80,70)" label="Hostile - air (UAV)" />
+          <Row color="rgb(225,95,125)" label="Hostile - water" />
+          <Row color="rgb(205,65,55)" label="Hostile - ground" />
           <Row color="rgb(235,130,90)" label="Interceptor" />
         </div>
       )}

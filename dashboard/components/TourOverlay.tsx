@@ -14,7 +14,7 @@ interface Slide {
 const SLIDES: Partial<Record<TourStep, Slide>> = {
   intro: {
     tag: '// SITUATION',
-    title: 'Forward Operating Base — exposed perimeter.',
+    title: 'Forward Operating Base - exposed perimeter.',
     body:
       'A FOB sits in contested terrain with no fixed surveillance grid. ' +
       'Conventional radar is line-of-sight, expensive, and a single point of ' +
@@ -27,7 +27,7 @@ const SLIDES: Partial<Record<TourStep, Slide>> = {
     title: 'Self-organizing edge network.',
     body:
       'Each relay is an autonomous edge-compute node. On power-up they ' +
-      'discover their neighbors over RF and form a self-healing mesh — no ' +
+      'discover their neighbors over RF and form a self-healing mesh - no ' +
       'central server, no operator config. Knock one out and the topology ' +
       're-routes around the loss.',
     next: 'incoming',
@@ -39,7 +39,7 @@ const SLIDES: Partial<Record<TourStep, Slide>> = {
     body:
       'The nearest pylon picks up the unmanned system the moment it ' +
       'crosses into RF range. Classification and bearing are computed ' +
-      'on-node — no cloud round-trip, no central correlator.',
+      'on-node - no cloud round-trip, no central correlator.',
     next: 'routing',
     cta: 'Route to FOB',
   },
@@ -169,7 +169,7 @@ export default function TourOverlay() {
 
   const stageLabels: Partial<Record<TourStep, string>> = {
     deploy: 'Relays deploying around FOB…',
-    incoming: 'Hostile UAV inbound — watch the perimeter',
+    incoming: 'Hostile UAV inbound - watch the perimeter',
     routing: 'Detection data routing through mesh…',
   }
 

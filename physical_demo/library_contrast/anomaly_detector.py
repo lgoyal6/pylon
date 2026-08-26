@@ -1,7 +1,7 @@
-"""Open-world anomaly detector — what the detection service runs at Iter 2.
+"""Open-world anomaly detector - what the detection service runs at Iter 2.
 
 Unsupervised IsolationForest trained on ambient windows only. At inference
-time, anything that doesn't fit the ambient distribution scores high — known
+time, anything that doesn't fit the ambient distribution scores high - known
 or novel, the model doesn't care. That's the wedge: it catches the novel
 emitter the library missed, because "different from ambient" is enough.
 """
@@ -34,7 +34,7 @@ class AnomalyDetector:
         """Learn phase: fit the model and pick a threshold from ambient scores."""
         self.model.fit(X_ambient)
         ambient_scores = self.score(X_ambient)
-        # Threshold at the quantile of ambient scores — calibrated so the
+        # Threshold at the quantile of ambient scores - calibrated so the
         # ambient false-positive rate is roughly (1 - quantile).
         self._threshold = float(np.quantile(ambient_scores, self.threshold_quantile))
         return self

@@ -104,7 +104,7 @@ def test_gfsk_hopper_bitrate_sets_bandwidth():
 
 
 def test_gfsk_hopper_is_constant_envelope():
-    # GFSK is constant-envelope (FM) — the defining feature of an RC/BT-like link.
+    # GFSK is constant-envelope (FM) - the defining feature of an RC/BT-like link.
     x = gfsk_hopper(2 ** 14, 4_000_000, seed=0)
     assert x.dtype == np.complex64
     nz = np.abs(x[x != 0])

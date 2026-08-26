@@ -18,7 +18,7 @@ def test_full_buffer_drops_newest_instead_of_blocking():
     # Detection is real-time; a full buffer drops rather than stalling a source.
     bus = DetectionBus(maxsize=1)
     bus.publish({"n": 1})
-    bus.publish({"n": 2})  # dropped — must not block
+    bus.publish({"n": 2})  # dropped - must not block
     assert bus.get(timeout=0.1)["n"] == 1
     assert bus.get(timeout=0.02) is None
 

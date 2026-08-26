@@ -189,7 +189,7 @@ export default function MapView() {
 
     const style = map.getStyle()
     if (!style?.layers) return
-    // First symbol layer — insert hillshade below labels so text stays readable.
+    // First symbol layer - insert hillshade below labels so text stays readable.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const firstSymbol = style.layers.find((l: any) => l.type === 'symbol')?.id
     try {
@@ -251,7 +251,7 @@ export default function MapView() {
     style.layers.forEach((l: any) => {
       if (l.type === 'symbol') {
         try {
-          // Off-white labels — readable against the dark basemap without
+          // Off-white labels - readable against the dark basemap without
           // screaming. Halo stays the page background so they don't smear.
           map.setPaintProperty(l.id, 'text-color', '#c5c7cb')
           map.setPaintProperty(l.id, 'text-halo-color', '#08090a')

@@ -1,4 +1,4 @@
-"""Case 3 — train the RF classifier on a feature dataset collected by collect.py.
+"""Case 3 - train the RF classifier on a feature dataset collected by collect.py.
 
     python train.py --dataset dataset.npz --out model.joblib
 
