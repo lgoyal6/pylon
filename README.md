@@ -1,6 +1,12 @@
 # Open-world RF drone detection
 
 BowCapital Defense Hackathon 2026 - Logistics & Cybersecurity track.
+**2nd place, Logistics & Cybersecurity (Software).**
+
+**[Try the command view: lattice-pm4d.vercel.app](https://lattice-pm4d.vercel.app)** - drop a
+relay ring over real terrain, place nodes and FOBs, launch air, water or ground swarms and
+watch the mesh reroute around what it loses.
+[Devpost writeup](https://devpost.com/software/pylon-3djs6c).
 
 A signature library (Dedrone, DroneShield) catches drones it has seen before;
 the unknown ones fall into `NO_MATCH` and walk through. We built an
