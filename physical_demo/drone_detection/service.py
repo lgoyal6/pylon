@@ -1,15 +1,14 @@
-"""FastAPI detection service (port 5001).
-
-Exposes the binary detection state at ``GET /status`` and a manual control
-endpoint ``POST /sim`` (the Iteration 0 stub "detector"). A background task
-re-publishes the detection event to multicast while detected, so the relay sees
-a live stream rather than a single edge.
+"""Serve detection status and connect capture sources to the detection bus.
+DetectorRunner updates DetectionState; the sink forwards events to the mesh.
+Keep capture health separate from detection and suppress stale heartbeats.
 """
 import asyncio
 import threading
 import time
+import uuid
 from contextlib import asynccontextmanager
 
+import numpy as np
 from fastapi import FastAPI
 from pydantic import BaseModel
 
@@ -31,6 +30,7 @@ auto_toggle_s = 0.0
 #   "sim"  -> manual /sim only (Iteration 0 behavior / stage fallback)
 #   "live" -> RTL-SDR capture loop drives detection (Iteration 1)
 source = "sim"
+capture_runner = None
 center_freq_hz = config.DEFAULT_CENTER_FREQ_HZ
 sample_rate_hz = config.SAMPLE_RATE_HZ
 gain = config.GAIN
@@ -82,14 +82,25 @@ class DetectorRunner:
         self.log_edges = log_edges  # print a line on each detection edge (live service)
         self._on = 0
         self._off = 0
+        self.health = {"state": "starting", "run_id": uuid.uuid4().hex, "windows": 0,
+                       "started_monotonic": time.monotonic(), "last_window_monotonic": None}
 
     def step(self):
         """Process one window; apply debounced state changes; publish edges.
         Returns the detector result, or None if the capture stream ended."""
         iq = self.capture.read_window(self.window_samples)
         if iq.size == 0:  # stream ended (e.g. no device)
+            self.state.clear()
+            self.health["state"] = "ended"
             return None
+        if (iq.ndim != 1 or iq.size != self.window_samples
+                or not np.iscomplexobj(iq) or not np.isfinite(iq).all()):
+            self.state.clear()
+            self.health["state"] = "failed"
+            raise ValueError("capture returned a truncated, nonfinite or malformed IQ window")
         result = self.detector.evaluate(iq)
+        self.health.update(state="running", windows=self.health["windows"] + 1,
+                           last_window_monotonic=time.monotonic())
         if result["detected"]:
             self._on += 1
             self._off = 0
@@ -124,7 +135,13 @@ class DetectorRunner:
                 if self.step() is None:
                     print("[capture] stream ended (no device?); detector loop stopping")
                     break
+        except Exception:
+            self.health["state"] = "failed"
+            raise
         finally:
+            self.state.clear()
+            if self.health["state"] not in ("failed", "ended"):
+                self.health["state"] = "stopped"
             self.capture.close()
 
 
@@ -165,6 +182,9 @@ def _toggle() -> None:
 async def _heartbeat() -> None:
     while True:
         await asyncio.sleep(config.PUBLISH_INTERVAL_S)
+        if source == "live" and (await health())["state"] not in ("running", "starting"):
+            state.clear()
+            continue
         if state.detected:
             _publish_current()
 
@@ -176,8 +196,9 @@ async def _auto_toggle() -> None:
 
 
 def _start_capture_thread():
-    """Build the RTL capture loop and run it in a daemon thread. Returns
-    (stop_event, thread) or None if hardware/import fails (falls back to sim)."""
+    """Start the chosen live source; close its receiver if setup fails."""
+    global capture_runner
+    capture_runner = None
     # imported lazily: only the live path needs librtlsdr / libiio
     if sdr_kind == "pluto":
         from capture import PlutoCapture
@@ -187,32 +208,38 @@ def _start_capture_thread():
         from capture import RtlCapture
 
         capture = RtlCapture(center_freq_hz=center_freq_hz, sample_rate=sample_rate_hz, gain=gain)
-    if detector_kind == "classifier":
-        from classifier import ClassifierSource, RFClassifier
+    try:
+        if detector_kind == "classifier":
+            from classifier import ClassifierSource, RFClassifier
 
-        clf = RFClassifier.load(classify_model_path)
-        print(f"[classifier] loaded model from {classify_model_path}; classifying -> mesh")
-        runner = ClassifierSource(capture, clf, bus, sample_rate=sample_rate_hz, center_freq_hz=center_freq_hz)
-    else:
-        if detector_kind == "energy":
-            from detector import EnergyThresholdDetector
-            detector = EnergyThresholdDetector(sample_rate=sample_rate_hz)
+            clf = RFClassifier.load(classify_model_path)
+            print(f"[classifier] loaded model from {classify_model_path}; classifying -> mesh")
+            runner = ClassifierSource(capture, clf, bus, sample_rate=sample_rate_hz, center_freq_hz=center_freq_hz)
         else:
-            from anomaly import AnomalyDetector
-            learn_windows = max(1, int(learn_seconds * sample_rate_hz / config.WINDOW_SAMPLES))
-            detector = AnomalyDetector(sample_rate=sample_rate_hz, learn_windows=learn_windows, baseline=baseline_kind)
-            if load_model_path:
-                detector.load(load_model_path)
-                print(f"[anomaly] loaded baseline from {load_model_path}; watching")
-            elif save_model_path:
-                detector._save_path = save_model_path  # _fit() persists when learning completes
-            if not load_model_path:
-                print(f"[anomaly] learning ambient for ~{learn_seconds:.0f}s ({learn_windows} windows); keep the target OFF")
-        runner = DetectorRunner(capture, detector, state, bus, center_freq_hz=center_freq_hz, log_edges=True)
-    stop_event = threading.Event()
-    thread = threading.Thread(target=runner.run, args=(stop_event,), daemon=True)
-    thread.start()
-    return stop_event, thread
+            if detector_kind == "energy":
+                from detector import EnergyThresholdDetector
+                detector = EnergyThresholdDetector(sample_rate=sample_rate_hz)
+            else:
+                from anomaly import AnomalyDetector
+                learn_windows = max(1, int(learn_seconds * sample_rate_hz / config.WINDOW_SAMPLES))
+                detector = AnomalyDetector(sample_rate=sample_rate_hz, learn_windows=learn_windows, baseline=baseline_kind)
+                if load_model_path:
+                    detector.load(load_model_path)
+                    print(f"[anomaly] loaded baseline from {load_model_path}; watching")
+                elif save_model_path:
+                    detector._save_path = save_model_path  # _fit() persists when learning completes
+                if not load_model_path:
+                    print(f"[anomaly] learning ambient for ~{learn_seconds:.0f}s ({learn_windows} windows); keep the target OFF")
+            runner = DetectorRunner(capture, detector, state, bus, center_freq_hz=center_freq_hz, log_edges=True)
+            capture_runner = runner
+        stop_event = threading.Event()
+        thread = threading.Thread(target=runner.run, args=(stop_event,), daemon=True)
+        thread.start()
+        return stop_event, thread
+    except Exception:
+        capture_runner = None
+        capture.close()
+        raise
 
 
 def _start_bt_scanner_thread():
@@ -274,6 +301,26 @@ app = FastAPI(title="Drone Detection Service", lifespan=lifespan)
 @app.get("/status")
 async def status() -> dict:
     return state.snapshot()
+
+
+@app.get("/health")
+async def health() -> dict:
+    """Separate source health from the compatible binary /status contract.
+
+    A stalled blocking read is observable as stale, even before it returns.
+    Classifier and BT sources have no capture-health instrumentation here.
+    """
+    if source != "live":
+        return {"source": source, "state": "simulation"}
+    if capture_runner is None:
+        return {"source": source, "state": "unavailable"}
+    snapshot = dict(capture_runner.health)
+    last = snapshot.pop("last_window_monotonic")
+    started = snapshot.pop("started_monotonic")
+    age = max(0.0, time.monotonic() - (started if last is None else last))
+    if snapshot["state"] in ("running", "starting") and age > 5.0:
+        snapshot["state"] = "stale"
+    return {"source": source, **snapshot, "last_window_age_s": age}
 
 
 @app.post("/sim")

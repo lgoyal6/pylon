@@ -1,14 +1,10 @@
-"""Live RTL-SDR capture via the `rtl_sdr` CLI.
-
-We shell out to `rtl_sdr` (Homebrew `librtlsdr`) rather than use pyrtlsdr: the
-pyrtlsdr 0.4.0 ctypes bindings expect `rtlsdr_set_dithering`, which the Homebrew
-librtlsdr 2.0.2 build doesn't export, so `import rtlsdr` fails. The compiled
-`rtl_sdr` binary links the dylib correctly and streams raw IQ on stdout.
-
-`rtl_sdr` emits interleaved unsigned 8-bit I/Q; we normalize to complex64 in
-[-1, 1], matching what a detector expects.
+"""Read RTL-SDR or Pluto IQ for the detector and classifier runners.
+RTL uses the installed CLI; Pluto loads its native driver only on use.
+Reject incomplete RTL windows and bound reads to handle missing devices.
 """
 import subprocess
+import select
+import time
 
 import numpy as np
 
@@ -31,18 +27,34 @@ class RtlCapture:
         if str(gain) != "auto":  # omitting -g leaves rtl_sdr in automatic gain
             cmd += ["-g", str(gain)]
         cmd += ["-"]  # stream IQ to stdout
-        self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0)
 
     def read_window(self, n_samples: int) -> np.ndarray:
         """Read one IQ window. Returns an empty array if the stream ended
         (e.g. no device), so callers can detect/skip gracefully."""
+        if n_samples <= 0:
+            raise ValueError("n_samples must be positive")
         need = 2 * n_samples  # two bytes (I, Q) per complex sample
         buf = bytearray()
+        deadline = time.monotonic() + 2.0
         while len(buf) < need:
+            # A disconnected/stalled device must not hold shutdown forever.
+            # In-memory test streams have no fd and do not block.
+            try:
+                fd = self.proc.stdout.fileno()
+            except (AttributeError, OSError):
+                fd = None
+            if isinstance(fd, int):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not select.select([fd], [], [], remaining)[0]:
+                    break
             chunk = self.proc.stdout.read(need - len(buf))
             if not chunk:
                 break
             buf += chunk
+        if len(buf) != need:
+            # A partial window is capture loss, never a valid quiet window.
+            return np.empty(0, dtype=np.complex64)
         raw = np.frombuffer(bytes(buf), dtype=np.uint8).astype(np.float32)
         i, q = raw[0::2], raw[1::2]
         return ((i - 127.5) + 1j * (q - 127.5)).astype(np.complex64) / 127.5
@@ -53,6 +65,7 @@ class RtlCapture:
             self.proc.wait(timeout=2)
         except subprocess.TimeoutExpired:
             self.proc.kill()
+            self.proc.wait(timeout=2)
 
 
 class PlutoCapture:

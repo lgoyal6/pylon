@@ -1,5 +1,27 @@
 # Demo Runbook - drone @ 8am, deadline 11am
 
+## Capture health and recovery
+
+For the energy/anomaly capture runner, `GET /health` reports simulation, starting,
+running, stale, ended, failed or unavailable, plus processed windows and sample age.
+`GET /status` keeps its existing detection response. A live service that falls back
+to manual simulation reports unavailable sensing; manual toggles are not device
+evidence. Classifier and Bluetooth sources are not instrumented by this health view.
+No raw IQ, paths, device exceptions or credentials are exposed in health responses.
+
+RTL reads have a two-second total window deadline. Incomplete I/Q pairs and short
+windows are discarded. End-of-stream, malformed/nonfinite samples and cancellation
+clear the detection state; stale or unavailable capture suppresses RF heartbeats.
+After failure, check receiver connection and RF geometry, restart the process, and
+relearn ambient with the target absent. A baseline learned at another gain, clock,
+frequency, receiver or environment is not silently reused as calibrated evidence.
+Restore prior code/configuration to roll back; preserve capture manifests and study
+inputs privately under the task evidence retention policy. Hardware recovery and
+clock accuracy still require actual device checks.
+
+The historical demo steps below include active transmission. They are not part of
+an offline or receive-only validation run and require separate authorization.
+
 Target: **Sharper Image 2.4 GHz RC Glow-Up Stunt Drone** - controller-based, nRF24/
 Beken **GFSK frequency-hopper** (not WiFi/BT). **Band 2404–2476 MHz, center 2440**,
 ~1 Mbps. Detection is by *structure* (narrowband GFSK hops), not frequency.
