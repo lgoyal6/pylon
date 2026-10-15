@@ -1,3 +1,7 @@
+"""Check spectral features used by both evaluation runners.
+Use synthetic.py inputs and direct boundary fixtures for features.py.
+Require finite outputs for quiet IQ and reject corrupt data or bad geometry.
+"""
 from __future__ import annotations
 
 import numpy as np
@@ -5,6 +9,7 @@ import numpy as np
 import config
 import features
 import synthetic
+import pytest
 
 
 def test_iq_to_windows_shape(short_duration):
@@ -52,3 +57,27 @@ def test_ambient_and_emitter_features_differ(short_duration):
     wifi = features.iq_to_features(synthetic.generate("wifi", duration_s=short_duration, seed=0))
     # Total spectral power should differ meaningfully (wifi >> ambient).
     assert wifi.mean(axis=0)[:config.N_PSD_BINS].mean() > amb.mean(axis=0)[:config.N_PSD_BINS].mean()
+
+
+@pytest.mark.parametrize("kwargs", [{"hop_samples": 0}, {"window_samples": 0}, {"n_bins": 0}, {"n_bins": 2048}])
+def test_invalid_feature_geometry_rejected(kwargs):
+    with pytest.raises(ValueError):
+        features.iq_to_features(np.ones(2048, complex), **kwargs)
+
+
+def test_corrupt_sample_is_rejected_before_fft():
+    with pytest.raises(ValueError, match="nonfinite"):
+        features.iq_to_features(np.full(2048, np.nan + 1j))
+
+
+def test_quiet_zero_samples_have_finite_features():
+    assert np.isfinite(features.iq_to_features(np.zeros(2048, complex))).all()
+
+
+def test_dense_windows_are_rejected_before_large_allocation(monkeypatch):
+    iq = np.zeros(12288, dtype=np.complex64)
+    def forbid_allocation(*args, **kwargs):
+        raise AssertionError("large window allocation reached")
+    monkeypatch.setattr(features.np, "empty", forbid_allocation)
+    with pytest.raises(ValueError, match="128 MiB"):
+        features.iq_to_windows(iq, window_samples=2048, hop_samples=1)

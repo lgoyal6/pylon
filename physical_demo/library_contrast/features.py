@@ -1,7 +1,6 @@
-"""IQ → per-window spectral feature vectors.
-
-Each window becomes one row: a downsampled log-PSD plus a few summary stats.
-RandomForest and IsolationForest both eat this directly.
+"""Extract spectral features for the signature and anomaly detectors.
+evaluate.py and heldout_study.py share this window and feature geometry.
+Reject invalid IQ before FFT processing; short captures return no windows.
 """
 from __future__ import annotations
 
@@ -18,10 +17,17 @@ def iq_to_windows(
     """Slide a Hann-tapered window across complex IQ; return (n_windows, window_samples) complex."""
     if iq.ndim != 1:
         raise ValueError(f"expected 1-D complex IQ, got shape {iq.shape}")
+    if window_samples <= 0 or hop_samples <= 0:
+        raise ValueError("window and hop must be positive")
+    if not np.isfinite(iq).all():
+        raise ValueError("nonfinite IQ samples")
     if iq.size < window_samples:
         return np.empty((0, window_samples), dtype=np.complex64)
-    taper = np.hanning(window_samples).astype(np.float32)
     n = 1 + (iq.size - window_samples) // hop_samples
+    # Dense overlap can expand a small capture into a large window matrix.
+    if n * window_samples * np.dtype(np.complex64).itemsize > 128 * 1024 * 1024:
+        raise ValueError("window matrix exceeds the 128 MiB replay limit")
+    taper = np.hanning(window_samples).astype(np.float32)
     out = np.empty((n, window_samples), dtype=np.complex64)
     for i in range(n):
         start = i * hop_samples
@@ -59,6 +65,8 @@ def _summary_stats(psd_bins: np.ndarray) -> np.ndarray:
 
 
 def window_to_features(window: np.ndarray, n_bins: int = config.N_PSD_BINS) -> np.ndarray:
+    if n_bins <= 0 or n_bins > window.size:
+        raise ValueError("n_bins must be between 1 and window size")
     psd = _psd_bins(window, n_bins)
     stats = _summary_stats(psd)
     return np.concatenate([psd, stats])
@@ -74,6 +82,8 @@ def iq_to_features(
     n_bins: int = config.N_PSD_BINS,
 ) -> np.ndarray:
     """Returns (n_windows, n_bins + 5) float32 feature matrix."""
+    if n_bins <= 0 or n_bins > window_samples:
+        raise ValueError("n_bins must be between 1 and window size")
     windows = iq_to_windows(iq, window_samples, hop_samples)
     if windows.size == 0:
         return np.empty((0, n_bins + _N_SUMMARY_STATS), dtype=np.float32)

@@ -1,10 +1,6 @@
-"""End-to-end evaluation harness.
-
-Generates (or loads) per-class IQ → extracts features → trains the library
-baseline on known classes + ambient → trains the anomaly detector on ambient
-only → runs both on a held-out test set → reports miss rates per class.
-
-The pitch metric: miss rate on the `novel` class. Library: high. Anomaly: low.
+"""Run the synthetic signature-versus-anomaly demonstration and write charts.
+synthetic.py supplies IQ; features.py and the two detector classes score it.
+Require nonempty train/test sets; this random window split is not field evidence.
 """
 from __future__ import annotations
 
@@ -54,10 +50,14 @@ def _train_test_split(
     features_by_class: dict[str, np.ndarray], train_fraction: float, rng: np.random.Generator
 ) -> tuple[dict[str, np.ndarray], dict[str, np.ndarray]]:
     """Per-class random split - keeps test windows from every class for eval."""
+    if not np.isfinite(train_fraction) or not 0 < train_fraction < 1:
+        raise ValueError("train_fraction must be between 0 and 1")
     train, test = {}, {}
     for name, X in features_by_class.items():
         idx = rng.permutation(X.shape[0])
         cut = int(train_fraction * X.shape[0])
+        if cut == 0 or cut == X.shape[0]:
+            raise ValueError(f"{name} needs at least one training and one test window")
         train[name] = X[idx[:cut]]
         test[name] = X[idx[cut:]]
     return train, test
@@ -71,7 +71,7 @@ def _miss_rate_on(detector_is_detection, X: np.ndarray, expect_detection: bool) 
       (i.e. false-positive rate, reported in the same column for symmetry).
     """
     if X.shape[0] == 0:
-        return 0.0
+        raise ValueError("cannot score an empty test set")
     flags = detector_is_detection(X)
     if expect_detection:
         return float((~flags).mean())
