@@ -95,14 +95,18 @@ class PlutoCapture:
 
             sdr = adi.Pluto(uri)
         self.sdr = sdr
-        sdr.rx_lo = int(center_freq_hz)
-        sdr.sample_rate = int(sample_rate)
-        sdr.rx_rf_bandwidth = int(sample_rate)
-        if str(gain) == "auto":
-            sdr.gain_control_mode_chan0 = "slow_attack"  # AGC
-        else:
-            sdr.gain_control_mode_chan0 = "manual"
-            sdr.rx_hardwaregain_chan0 = float(gain)
+        try:
+            sdr.rx_lo = int(center_freq_hz)
+            sdr.sample_rate = int(sample_rate)
+            sdr.rx_rf_bandwidth = int(sample_rate)
+            if str(gain) == "auto":
+                sdr.gain_control_mode_chan0 = "slow_attack"  # AGC
+            else:
+                sdr.gain_control_mode_chan0 = "manual"
+                sdr.rx_hardwaregain_chan0 = float(gain)
+        except Exception:
+            self.close()
+            raise
         self._buffer_size = None
 
     def read_window(self, n_samples: int) -> np.ndarray:

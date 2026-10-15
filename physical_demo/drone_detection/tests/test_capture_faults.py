@@ -1,8 +1,10 @@
-"""Check RTL transport faults without a radio or native driver.
-Inject subprocess streams into capture.py to exercise partial and stalled reads.
+"""Check RTL and Pluto faults without a radio or native driver.
+Inject streams and receiver setup faults into capture.py to check cleanup.
 Retain complete-read controls so fault rejection cannot hide broken decoding.
 """
 import io
+import sys
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import numpy as np
@@ -56,3 +58,25 @@ def test_stalled_device_read_is_bounded(monkeypatch):
     monkeypatch.setattr(capture.select, "select", lambda *a: ([], [], []))
     assert cap.read_window(4).size == 0
     proc.stdout.read.assert_not_called()
+
+
+@pytest.mark.parametrize("attribute", [
+    "rx_lo", "sample_rate", "rx_rf_bandwidth",
+    "gain_control_mode_chan0", "rx_hardwaregain_chan0",
+])
+@pytest.mark.parametrize("cleanup_fails", [False, True])
+def test_pluto_setup_failure_closes_opened_receiver(monkeypatch, attribute, cleanup_fails):
+    class FaultySdr:
+        def __setattr__(self, name, value):
+            if name == attribute:
+                raise OSError("injected setup failure: " + attribute)
+            object.__setattr__(self, name, value)
+
+    sdr = FaultySdr()
+    sdr.rx_destroy_buffer = Mock(side_effect=RuntimeError("cleanup failed") if cleanup_fails else None)
+    opened = Mock(return_value=sdr)
+    monkeypatch.setitem(sys.modules, "adi", SimpleNamespace(Pluto=opened))
+    with pytest.raises(OSError, match="injected setup failure: " + attribute):
+        capture.PlutoCapture(2_437_000_000, 4_000_000, gain="40", uri="fake-uri")
+    opened.assert_called_once_with("fake-uri")
+    sdr.rx_destroy_buffer.assert_called_once()
