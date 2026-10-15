@@ -3,6 +3,8 @@ fastapi==0.136.1
 uvicorn[standard]==0.47.0
 numpy==2.3.5
 scipy==1.16.3
+# Emitter classifier and its persisted scikit-learn model.
+scikit-learn==1.9.1
 
 # System dependency (not pip): librtlsdr provides the `rtl_sdr` CLI used by
 # capture.py.  macOS:  brew install librtlsdr
