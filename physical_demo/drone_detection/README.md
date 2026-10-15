@@ -32,6 +32,11 @@ selectable: `--detector anomaly` (the product) and `--detector energy`
   channelized) vs `jamming-like` (wide novel energy) by `classify_emitter` - this
   fills the event's `classification` field. Behavioral, not a signature match.
 
+The original detector note records a 141-sigma bin with no change in
+IsolationForest score. This historical observation motivated the per-bin detector.
+PSD-to-dB conversion and median subtraction use float64 to avoid a float32
+centering residual across FFT implementations.
+
 ## Contract
 - **Service:** `GET http://<host>:5001/status` →
   `{ "detected": bool, "anomaly_score": float, "since": "<ISO8601>"|null }`
