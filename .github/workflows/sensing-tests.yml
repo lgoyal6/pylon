@@ -1,0 +1,38 @@
+# Run the two sensing suites from their own dependency declarations.
+# Each job installs one package to catch missing or conflicting dependencies.
+# Hardware checks skip when no SDR is available; CI does not validate RF devices.
+name: Sensing tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    name: ${{ matrix.package }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [drone_detection, library_contrast]
+    env:
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MPLBACKEND: Agg
+    defaults:
+      run:
+        working-directory: physical_demo/${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: physical_demo/${{ matrix.package }}/requirements.txt
+      - run: python -m pip install -r requirements.txt
+      - run: python -m pytest -q
