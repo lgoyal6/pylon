@@ -1,23 +1,6 @@
-"""Iteration 2 detector: open-world RF anomaly detection (the product).
-
-Learns the ambient spectrum as "normal" - a per-frequency-bin baseline
-(mean/std of the normalized PSD shape) - then flags a window when any bin's
-power rises far above its learned baseline (max z-score). This catches an
-*unknown* emitter a signature library would miss. Stationary spurs/ambient seen
-during learning are baked into the baseline, so they stop false-alarming (the
-Iteration 1 spur problem). A bursty narrowband emitter (e.g. a key fob)
-introduces energy in a bin that was quiet -> a huge z -> flagged.
-
-Why not IsolationForest (the original plan): on RTL data a novel narrowband
-burst is a single anomalous bin among ~256 feature dims, and IF's random splits
-almost never isolate it (measured: a 141-sigma bin produced no change in IF
-score). The learned per-bin baseline is far more sensitive and just as
-unsupervised.
-
-Same `evaluate(iq) -> {detected, anomaly_score, snr_db, occupied_bw_hz}` contract
-as EnergyThresholdDetector, so it drops into DetectorRunner unchanged. The
-learn->watch transition is self-managed by counting windows; during learning it
-returns detected=False.
+"""Learn ambient spectral shape and flag per-bin RF deviations.
+service.DetectorRunner consumes the same interface as energy detection.
+Normalize in float64 to preserve centering across FFT implementations.
 """
 import numpy as np
 
@@ -64,10 +47,10 @@ class AnomalyDetector:
         baseline feature; the psd also yields the event metrics."""
         f, psd = welch_psd(iq, self.sample_rate, self.n_bins)
         order = np.argsort(f)  # stable low->high frequency layout
-        psd_sorted = psd[order]
+        psd_sorted = psd[order].astype(np.float64)
         db = 10.0 * np.log10(psd_sorted + 1e-12)
         feature = db - np.median(db)  # spectral shape, not absolute level
-        return feature.astype(np.float64), psd
+        return feature, psd
 
     def _fit(self) -> None:
         X = np.vstack(self._buffer)

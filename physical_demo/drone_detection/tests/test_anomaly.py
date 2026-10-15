@@ -1,3 +1,7 @@
+"""Check ambient learning and novelty detection in anomaly.py.
+Use deterministic RF fixtures and save/load controls for both baseline modes.
+Keep spectral centering precise across float32 PSD and platform FFT differences.
+"""
 import numpy as np
 
 from anomaly import AnomalyDetector
@@ -40,6 +44,15 @@ def test_featurize_is_shape_normalized_vector():
     feat = det._featurize(_noise(0))[0]
     assert feat.shape == (NB,)
     assert abs(float(np.median(feat))) < 1e-6  # median-subtracted (shape, not level)
+
+
+def test_float32_psd_is_centered_without_rounding_residual(monkeypatch):
+    import anomaly
+    psd = np.tile(np.array([1e-6, 1.01e-6], dtype=np.float32), NB // 2)
+    monkeypatch.setattr(anomaly, "welch_psd", lambda *args: (np.arange(NB), psd))
+    feat = AnomalyDetector(sample_rate=FS, n_bins=NB)._featurize(_noise(0))[0]
+    assert feat.dtype == np.float64
+    assert abs(float(np.median(feat))) < 1e-12
 
 
 def test_detector_is_learning_until_buffer_full():
