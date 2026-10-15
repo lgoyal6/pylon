@@ -79,6 +79,9 @@ normalization is a software gain intervention, not physical receiver calibration
 All arms see the same captures. Results preserve raw calibration scores, test flags,
 per-class slices, session bootstrap uncertainty, first-flag delay from recording start,
 and missed recordings. `summarize(result['raw'], seed)` reconstructs the summaries.
+Bootstrap intervals are `null` when the relevant target or negative set has fewer
+than two independent acquisition sessions. Results include both session counts and
+`bootstrap_min_sessions`; a single session cannot establish sampling uncertainty.
 Flagged windows use hop-time exposure; they are not independent alerts or operator
 notifications. Calibration budgets can fail on a shifted test environment. Short
 replays cannot establish operational false alerts/hour or broad drone reliability.

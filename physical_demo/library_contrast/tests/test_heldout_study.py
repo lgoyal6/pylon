@@ -59,3 +59,25 @@ def test_source_mutation_requires_a_new_protocol(tmp_path):
     protocol.write_text(json.dumps({"source_sha256": {"different.py": "old"}}))
     with pytest.raises(ValueError, match="source hashes differ"):
         run(manifest, protocol, tmp_path / "result.json")
+
+
+@pytest.mark.parametrize("target_sessions", [1, 2])
+@pytest.mark.parametrize("negative_sessions", [1, 2])
+def test_bootstrap_intervals_require_independent_sessions(target_sessions, negative_sessions):
+    raw = []
+    for target, count in [(True, target_sessions), (False, negative_sessions)]:
+        for index in range(count):
+            raw.append({"target": target, "session_id": f"{target}-{index}",
+                        "label": "target" if target else "ambient", "hop_s": 1,
+                        "exposure_s": 3600,
+                        "flags": {"library_budget": [False, True],
+                                  "anomaly_budget": [True, True]}})
+    result = summarize(raw, seed=7, repeats=50)
+    for arm, metrics in result.items():
+        assert (metrics["target_session_bootstrap_95ci"] is None) == (target_sessions < 2)
+        assert (metrics["paired_recall_delta_vs_library_95ci"] is None) == (target_sessions < 2)
+        assert (metrics["false_alert_rate_session_bootstrap_95ci"] is None) == (negative_sessions < 2)
+        assert metrics["target_sessions"] == target_sessions
+        assert metrics["negative_sessions"] == negative_sessions
+        assert metrics["bootstrap_min_sessions"] == 2
+        assert metrics["target_recording_macro_recall"] == (0.5 if arm == "library_budget" else 1)

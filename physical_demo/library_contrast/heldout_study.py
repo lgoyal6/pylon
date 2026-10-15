@@ -82,11 +82,12 @@ def summarize(raw: list[dict], seed: int, repeats: int = 1000) -> dict:
                        "novel_recording_macro_recall": recall(novel),
                        "false_alerted_windows": int(false_alerts), "negative_hours": negative_hours,
                        "false_alerted_windows_per_hour": false_alerts / negative_hours,
-                       "false_alert_rate_session_bootstrap_95ci": np.quantile(neg_boot, [0.025, 0.975]).tolist(),
+                       "false_alert_rate_session_bootstrap_95ci": np.quantile(neg_boot, [0.025, 0.975]).tolist() if len(negative_sessions) >= 2 else None,
                        "per_label_flag_fraction": {label: float(np.mean([np.mean(r["flags"][arm]) for r in raw if r["label"] == label])) for label in sorted({r["label"] for r in raw})},
                        "target_session_macro_recall": float(np.mean(rates)),
-                       "target_session_bootstrap_95ci": np.quantile(boot, [0.025, 0.975]).tolist(),
+                       "target_session_bootstrap_95ci": np.quantile(boot, [0.025, 0.975]).tolist() if len(sessions) >= 2 else None,
                        "target_sessions": len(sessions), "target_recordings": len(targets),
+                       "negative_sessions": len(negative_sessions), "bootstrap_min_sessions": 2,
                        "first_flag_delay_s": delays, "missed_recordings": sum(d is None for d in delays)}
     baseline = "library_budget"
     for arm in arms:
@@ -96,7 +97,7 @@ def summarize(raw: list[dict], seed: int, repeats: int = 1000) -> dict:
                           for r in raw if r["target"] and r["session_id"] == s]) for s in sessions]
         rng = np.random.default_rng(seed)
         boot = [np.mean(rng.choice(diffs, len(diffs), replace=True)) for _ in range(repeats)]
-        result[arm]["paired_recall_delta_vs_library_95ci"] = np.quantile(boot, [0.025, 0.975]).tolist()
+        result[arm]["paired_recall_delta_vs_library_95ci"] = np.quantile(boot, [0.025, 0.975]).tolist() if len(sessions) >= 2 else None
     return result
 
 
