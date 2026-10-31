@@ -32,6 +32,7 @@ export default function TopBar() {
       <span style={{ fontSize: '11px', letterSpacing: '0.15em', color: '#9a9b9e' }}>
         // PYLON
       </span>
+      <a href="https://github.com/lgoyal6/pylon" target="_blank" rel="noopener noreferrer" style={{ fontSize: '11px', color: '#9a9b9e' }}>GitHub</a>
       <span style={{ fontSize: '11px', letterSpacing: '0.1em', color: '#5a5b5e' }}>
         {time}
       </span>
