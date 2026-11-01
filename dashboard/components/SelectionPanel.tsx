@@ -33,7 +33,7 @@ export default function SelectionPanel() {
   const drone = drones.find(d => d.id === selectedId)
   if (!relay && !fob && !drone) return null
 
-  let title = selectedId
+  const title = selectedId
   let subtitle = ''
   const props: [string, string][] = []
 
