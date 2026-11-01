@@ -26,6 +26,16 @@ export default function Home() {
       }}
     >
       <TopBar />
+      <section aria-label="Operator task and evidence" style={{padding:'10px 16px',color:'#bdc8d2',fontSize:'12px',lineHeight:1.5,borderBottom:'1px solid #26303a'}}>
+        <strong>Operator task: preserve a route after a relay fails.</strong> Deploy the ring, launch a simulated swarm, then remove a relay and inspect the rerouted alert.
+        <details><summary>Simulation and RF evidence</summary>
+          <p>This map uses synthetic RF and simulated assets. Its detections are separate from the physical RF prototype and held-out synthetic-IQ study.</p>
+          <p>The detector’s calibration loads ambient captures before novelty scoring. The comparison uses an illustrative signature baseline, not a vendor implementation.</p>
+          <a href="https://github.com/lgoyal6/pylon">Project source</a>{' | '}
+          <a href="https://github.com/lgoyal6/pylon/blob/main/physical_demo/drone_detection/RUNBOOK.md">Physical capture and calibration runbook</a>{' | '}
+          <a href="https://github.com/lgoyal6/pylon/tree/main/physical_demo/library_contrast">Synthetic-IQ evaluation and bounds</a>
+        </details>
+      </section>
 
       {/* Main content */}
       <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
