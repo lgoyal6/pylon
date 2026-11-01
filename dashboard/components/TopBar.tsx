@@ -30,7 +30,7 @@ export default function TopBar() {
       }}
     >
       <span style={{ fontSize: '11px', letterSpacing: '0.15em', color: '#9a9b9e' }}>
-        // PYLON
+        {'PYLON / SIMULATION'} <a href="https://github.com/lgoyal6/pylon" style={{marginLeft:12,color:'#bdc8d2'}}>GitHub</a>
       </span>
       <span style={{ fontSize: '11px', letterSpacing: '0.1em', color: '#5a5b5e' }}>
         {time}
