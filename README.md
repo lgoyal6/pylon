@@ -1,7 +1,7 @@
 # Open-world RF drone detection
 
 BowCapital Defense Hackathon 2026 - Logistics & Cybersecurity track.
-**2nd place, Logistics & Cybersecurity (Software).**
+**1st place, Logistics & Cybersecurity (Software).**
 
 **[Try the command view: lattice-pm4d.vercel.app](https://lattice-pm4d.vercel.app)** - drop a
 relay ring over real terrain, place nodes and FOBs, launch air, water or ground swarms and
