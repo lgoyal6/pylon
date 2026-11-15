@@ -1,4 +1,7 @@
-# Open-world RF drone detection
+# Pylon
+
+Counter-drone detection and a self-organizing sensor mesh, with an interactive
+operator dashboard.
 
 BowCapital Defense Hackathon 2026 - Logistics & Cybersecurity track.
 **1st place, Logistics & Cybersecurity (Software).**
@@ -7,6 +10,8 @@ BowCapital Defense Hackathon 2026 - Logistics & Cybersecurity track.
 relay ring over real terrain, place nodes and FOBs, launch air, water or ground swarms and
 watch the mesh reroute around what it loses.
 [Devpost writeup](https://devpost.com/software/pylon-3djs6c).
+
+![Pylon's interactive simulation showing relay nodes, a detected threat, and mesh health](docs/pylon-demo.jpg)
 
 A signature library (Dedrone, DroneShield) catches drones it has seen before;
 the unknown ones fall into `NO_MATCH` and walk through. We built an
